@@ -1,6 +1,6 @@
 # <img src="design/logo/keeberry-icon.svg" width="40" height="40" alt="KeeBerry logo"/> KeeBerry
 
-[![CI](https://github.com/keyberryapp/keyberry/actions/workflows/ci.yml/badge.svg)](https://github.com/keyberryapp/keyberry/actions/workflows/ci.yml)
+[![CI](https://github.com/keeberry/keeberry/actions/workflows/ci.yml/badge.svg)](https://github.com/keeberry/keeberry/actions/workflows/ci.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 ![Android 9+](https://img.shields.io/badge/Android-9%2B-3ddc84.svg)
 
@@ -59,8 +59,8 @@ You need:
 Clone the repository and build a debug APK:
 
 ```bash
-git clone https://github.com/keyberryapp/keyberry.git
-cd keyberry
+git clone https://github.com/keeberry/keeberry.git
+cd keeberry
 ./gradlew assembleDebug
 ```
 
@@ -86,14 +86,14 @@ error, so fix new warnings before opening a pull request.
 ## Contributing
 
 Bug reports and feature ideas are welcome in the
-[issue tracker](https://github.com/keyberryapp/keyberry/issues). If you'd like to send a pull
+[issue tracker](https://github.com/keeberry/keeberry/issues). If you'd like to send a pull
 request, please open an issue first to discuss the change, and make sure the unit tests and lint
 pass.
 
 ## Reporting security issues
 
 Please don't report vulnerabilities in public issues. Use GitHub's
-[private vulnerability reporting](https://github.com/keyberryapp/keyberry/security/advisories/new)
+[private vulnerability reporting](https://github.com/keeberry/keeberry/security/advisories/new)
 instead, and include the steps to reproduce the problem.
 
 ## License
