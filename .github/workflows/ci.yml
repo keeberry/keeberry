@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Unit tests, lint and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          # Matches gradle/gradle-daemon-jvm.properties.
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v4
+      # Lint fails on any warning, see the lint block in app/build.gradle.kts.
+      - run: ./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: app/build/reports
+
+  device-tests:
+    name: Device tests (x86_64 emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      # Runs the Compose UI tests and the native Argon2 and AES-KDF tests, which on this runner
+      # exercise the x86_64 library that phones with arm64 never load.
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          script: ./gradlew connectedDebugAndroidTest
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-test-reports
+          path: app/build/reports/androidTests
