@@ -108,5 +108,5 @@
     <string name="create_database_error">Couldn’t save the database there. Choose a location you can write to.</string>
     <string name="create_database_memory_error">Not enough free memory to create a database right now. Close other apps and try again.</string>
     <string name="create_database_done_title">Database created</string>
-    <string name="create_database_done_message">%1$s is ready. KeyBerry opens databases read-only, so add entries with KeePassXC or another KeePass app.</string>
+    <string name="create_database_done_message">%1$s is ready. Open it from Recent databases to add your first entries.</string>
 </resources>
