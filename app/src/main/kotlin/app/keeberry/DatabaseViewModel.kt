@@ -92,7 +92,7 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
     private val main = Handler(Looper.getMainLooper())
     private var unlockJob: Job? = null
     private var signal: CancellationSignal? = null
-    private var hardware: YubiKeyUnlock? = null
+    private var hardware: YubiKeyChallenge? = null
     private var databaseUri: Uri? = null
     private var saveJob: Job? = null
 
@@ -145,7 +145,9 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
         val signal = CancellationSignal()
         lateinit var job: Job
         val hardware = slot?.let {
-            YubiKeyUnlock(getApplication(), it) { prompt -> if (job.isActive) progress = Progress(prompt, null) }
+            YubiKeyChallenge(getApplication(), it, R.string.database_unlocking) { prompt ->
+                if (job.isActive) progress = Progress(prompt, null)
+            }
         }
         hardware?.attach(activity)
         // One unlock runs at a time across screens, so a new one waits for a cancelled one to stop
@@ -173,7 +175,7 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
         pass: CharArray?,
         key: Uri?,
         signal: CancellationSignal,
-        hardware: YubiKeyUnlock?,
+        hardware: YubiKeyChallenge?,
         withYubiKey: Boolean,
     ) {
         withContext(kdfDispatcher) {
@@ -533,7 +535,7 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
         pass: CharArray?,
         key: Uri?,
         signal: CancellationSignal,
-        hardware: YubiKeyUnlock?,
+        hardware: YubiKeyChallenge?,
     ): Database {
         val argon2 = getApplication<Application>().nativeArgon2()
         val decoder = KdbxReader(argon2, { job.ensureActive() }, aesKdf = NativeAesKdf()) { stage ->

@@ -3,6 +3,7 @@ package app.keeberry.kdbx
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
+import java.io.InputStream
 import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder.LITTLE_ENDIAN
@@ -104,8 +105,20 @@ internal class KdbxWriter(
             else -> throw KdbxException(KdbxFailure.UNSUPPORTED)
         }
 
-    /** Writes a database named [name] with [password] as its only credential, then closes [output]. */
-    fun create(output: OutputStream, name: String, password: CharArray) {
+    /**
+     * Writes a database named [name], then closes [output]. Its master key combines whichever of
+     * [password], the key file [keyFile] opens and the YubiKey's [challengeResponse] are given, the
+     * same way [KdbxReader] and KeePassXC combine them. [keyFile] is read before the key derivation
+     * and closed.
+     */
+    fun create(
+        output: OutputStream,
+        name: String,
+        password: CharArray?,
+        keyFile: (() -> InputStream)? = null,
+        challengeResponse: ((ByteArray) -> ByteArray)? = null,
+    ) {
+        require(password != null || keyFile != null || challengeResponse != null)
         val masterSeed = randomBytes(32)
         val iv = randomBytes(16)
         val header = ByteArrayOutputStream().apply {
@@ -121,7 +134,11 @@ internal class KdbxWriter(
         }.toByteArray()
         // Deriving the key from the header as the reader parses it keeps both sides on one code path.
         val parsed = KdbxHeader.read(DataInputStream(ByteArrayInputStream(header)))
-        val transformed = transformKey(parsed, password, null, argon2, JcaAesKdf, checkCancelled, null, onStage)
+        val transformed = if (keyFile == null) {
+            transformKey(parsed, password, null, argon2, JcaAesKdf, checkCancelled, challengeResponse, onStage)
+        } else keyFile().use {
+            transformKey(parsed, password, it, argon2, JcaAesKdf, checkCancelled, challengeResponse, onStage)
+        }
         val encryptionKey = MessageDigest.getInstance("SHA-256").apply { update(masterSeed) }.digest(transformed)
         val hmacKey = MessageDigest.getInstance("SHA-512").apply {
             update(masterSeed)

@@ -53,6 +53,14 @@ internal class CreateDatabaseState(
     val name: TextFieldState,
     val password: TextFieldState,
     val confirmation: TextFieldState,
+    /** Whether the form offers "Use master password", which only matters next to another credential. */
+    val offersPassword: Boolean,
+    val usePassword: Boolean,
+    val showsPassword: Boolean,
+    val hasKeyFile: Boolean,
+    val keyName: String?,
+    val useYubiKey: Boolean,
+    val slotOne: Boolean,
     val error: Int?,
     /** The write under way, if any. */
     val progress: DatabaseViewModel.Progress?,
@@ -60,7 +68,18 @@ internal class CreateDatabaseState(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun CreateDatabaseScreen(state: CreateDatabaseState, onBack: () -> Unit, onCreate: () -> Unit, onCancel: () -> Unit) {
+internal fun CreateDatabaseScreen(
+    state: CreateDatabaseState,
+    onBack: () -> Unit,
+    onCreate: () -> Unit,
+    onCancel: () -> Unit,
+    onPickKeyFile: () -> Unit,
+    onNewKeyFile: () -> Unit,
+    onRemoveKeyFile: () -> Unit,
+    onUsePasswordChange: (Boolean) -> Unit,
+    onUseYubiKeyChange: (Boolean) -> Unit,
+    onSlotOneChange: (Boolean) -> Unit,
+) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -103,36 +122,30 @@ internal fun CreateDatabaseScreen(state: CreateDatabaseState, onBack: () -> Unit
                         ),
                         modifier = Modifier.fillMaxWidth().padding(top = 20.dp).testTag(TestTags.NEW_NAME),
                     )
-                    var visible by rememberSaveable { mutableStateOf(false) }
-                    NewPasswordField(
-                        state.password,
-                        R.string.database_password,
-                        visible,
+                    if (state.offersPassword) {
+                        CheckboxRow(R.string.database_use_password, state.usePassword, !creating, onUsePasswordChange)
+                    }
+                    if (state.showsPassword) NewPasswordFields(state, enabled = !creating, onCreate)
+                    KeyFileChoice(
+                        state.keyName,
+                        state.hasKeyFile,
                         enabled = !creating,
-                        onDone = null,
-                        modifier = Modifier.testTag(TestTags.NEW_PASSWORD),
-                        trailingIcon = {
-                            IconToggleButton(
-                                checked = visible,
-                                onCheckedChange = { visible = it },
-                                shapes = IconButtonDefaults.toggleableShapes(),
-                                enabled = !creating,
-                            ) {
-                                Icon(
-                                    painterResource(if (visible) R.drawable.ic_visibility_off else R.drawable.ic_visibility),
-                                    stringResource(if (visible) R.string.database_hide_password else R.string.database_show_password),
-                                )
-                            }
-                        },
+                        onPick = onPickKeyFile,
+                        onRemove = onRemoveKeyFile,
+                        onNew = onNewKeyFile,
+                        note = R.string.create_database_key_file_warning,
                     )
-                    NewPasswordField(
-                        state.confirmation,
-                        R.string.create_database_confirm_password,
-                        visible,
-                        enabled = !creating,
-                        onDone = onCreate,
-                        modifier = Modifier.testTag(TestTags.NEW_CONFIRMATION),
+                    CheckboxRow(
+                        R.string.database_use_yubikey,
+                        state.useYubiKey,
+                        !creating,
+                        onUseYubiKeyChange,
+                        Modifier.testTag(TestTags.USE_YUBIKEY),
                     )
+                    if (state.useYubiKey) {
+                        SlotChoice(state.slotOne, enabled = !creating, onSlotOneChange)
+                        Hint(R.string.create_database_yubikey_hint)
+                    }
                     state.error?.let {
                         Text(
                             stringResource(it),
@@ -153,6 +166,52 @@ internal fun CreateDatabaseScreen(state: CreateDatabaseState, onBack: () -> Unit
             }
         }
     }
+}
+
+/** The master password and its confirmation, which share one show/hide toggle. */
+@Composable
+private fun NewPasswordFields(state: CreateDatabaseState, enabled: Boolean, onCreate: () -> Unit) {
+    var visible by rememberSaveable { mutableStateOf(false) }
+    NewPasswordField(
+        state.password,
+        R.string.database_password,
+        visible,
+        enabled = enabled,
+        onDone = null,
+        modifier = Modifier.testTag(TestTags.NEW_PASSWORD),
+        trailingIcon = {
+            IconToggleButton(
+                checked = visible,
+                onCheckedChange = { visible = it },
+                shapes = IconButtonDefaults.toggleableShapes(),
+                enabled = enabled,
+            ) {
+                Icon(
+                    painterResource(if (visible) R.drawable.ic_visibility_off else R.drawable.ic_visibility),
+                    stringResource(if (visible) R.string.database_hide_password else R.string.database_show_password),
+                )
+            }
+        },
+    )
+    NewPasswordField(
+        state.confirmation,
+        R.string.create_database_confirm_password,
+        visible,
+        enabled = enabled,
+        onDone = onCreate,
+        modifier = Modifier.testTag(TestTags.NEW_CONFIRMATION),
+    )
+}
+
+/** What the YubiKey means for opening the database later. */
+@Composable
+private fun Hint(text: Int) {
+    Text(
+        stringResource(text),
+        Modifier.padding(top = 4.dp),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable
@@ -182,13 +241,42 @@ private fun previewCreateState(
     name: String = "",
     password: String = "",
     confirmation: String = "",
+    usePassword: Boolean = true,
+    hasKeyFile: Boolean = false,
+    useYubiKey: Boolean = false,
     error: Int? = null,
     progress: DatabaseViewModel.Progress? = null,
-) = CreateDatabaseState(TextFieldState(name), TextFieldState(password), TextFieldState(confirmation), error, progress)
+) = CreateDatabaseState(
+    name = TextFieldState(name),
+    password = TextFieldState(password),
+    confirmation = TextFieldState(confirmation),
+    offersPassword = hasKeyFile || useYubiKey,
+    usePassword = usePassword,
+    showsPassword = usePassword || !(hasKeyFile || useYubiKey),
+    hasKeyFile = hasKeyFile,
+    keyName = if (hasKeyFile) "Personal.keyx" else null,
+    useYubiKey = useYubiKey,
+    slotOne = false,
+    error = error,
+    progress = progress,
+)
 
 @Composable
 private fun CreateDatabasePreview(state: CreateDatabaseState = previewCreateState()) {
-    KeeBerryTheme { CreateDatabaseScreen(state, onBack = {}, onCreate = {}, onCancel = {}) }
+    KeeBerryTheme {
+        CreateDatabaseScreen(
+            state,
+            onBack = {},
+            onCreate = {},
+            onCancel = {},
+            onPickKeyFile = {},
+            onNewKeyFile = {},
+            onRemoveKeyFile = {},
+            onUsePasswordChange = {},
+            onUseYubiKeyChange = {},
+            onSlotOneChange = {},
+        )
+    }
 }
 
 @ScreenPreviews
@@ -204,6 +292,12 @@ private fun CreateDatabaseMismatchPreview() = CreateDatabasePreview(
         confirmation = "correct hrose",
         error = R.string.create_database_password_mismatch,
     ),
+)
+
+@Preview(name = "Key file and YubiKey", showSystemUi = true)
+@Composable
+private fun CreateDatabaseKeyFilePreview() = CreateDatabasePreview(
+    previewCreateState(name = "Personal", usePassword = false, hasKeyFile = true, useYubiKey = true),
 )
 
 @Preview(name = "Creating", showSystemUi = true)

@@ -116,12 +116,16 @@
     <string name="entry_save_damaged_error">Saving failed and the original file couldn’t be put back. Restore the database from a backup or your storage’s version history.</string>
     <string name="close_dialog">Close</string>
     <string name="create_database">Create database</string>
-    <string name="create_database_description">A new, empty KeePass database (KDBX 4) protected by a master password. You’ll choose where to save it next.</string>
+    <string name="create_database_description">A new, empty KeePass database (KDBX 4), protected by a master password, a key file, a YubiKey or any of them together. You’ll choose where to save it next.</string>
     <string name="create_database_name">Database name</string>
     <string name="create_database_default_name">Passwords</string>
     <string name="create_database_confirm_password">Confirm master password</string>
     <string name="create_database_password_required">Enter a master password.</string>
     <string name="create_database_password_mismatch">The passwords don’t match.</string>
+    <string name="create_database_new_key_file">New key file</string>
+    <string name="create_database_key_file_save_error">Couldn’t save the key file there. Choose a location you can write to.</string>
+    <string name="create_database_key_file_warning">Keep a copy of this key file somewhere other than the database. Without it, the database can’t be opened.</string>
+    <string name="create_database_yubikey_hint">Uses the HMAC-SHA1 challenge-response in this slot. You’ll connect the key after choosing where to save. Without it, or a backup key with the same secret, the database can’t be opened.</string>
     <string name="create_database_creating">Creating…</string>
     <string name="create_database_error">Couldn’t save the database there. Choose a location you can write to.</string>
     <string name="create_database_memory_error">Not enough free memory to create a database right now. Close other apps and try again.</string>

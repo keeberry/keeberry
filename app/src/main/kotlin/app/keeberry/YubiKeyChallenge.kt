@@ -35,12 +35,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal class YubiKeyException(val messageId: Int) : IOException()
 
 /**
- * A single challenge for the current unlock attempt. [onPrompt] runs on the main thread. NFC
- * discovery follows the activity passed to [attach], which changes when the screen is recreated.
+ * A single challenge for the current unlock or new database. [onPrompt] runs on the main thread,
+ * and gets [afterResponse] once the key has answered or the wait has ended. NFC discovery follows
+ * the activity passed to [attach], which changes when the screen is recreated.
  */
-internal class YubiKeyUnlock(
+internal class YubiKeyChallenge(
     context: Context,
     private val slot: Slot,
+    private val afterResponse: Int,
     private val onPrompt: (Int) -> Unit,
 ) : Closeable, DefaultLifecycleObserver {
     private val main = Handler(Looper.getMainLooper())
@@ -120,7 +122,7 @@ internal class YubiKeyUnlock(
             throw YubiKeyException(R.string.database_yubikey_failed)
         } finally {
             close()
-            main.post { onPrompt(R.string.database_unlocking) }
+            main.post { onPrompt(afterResponse) }
         }
     }
 

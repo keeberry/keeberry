@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,16 +18,12 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.TextObfuscationMode
 import androidx.compose.foundation.verticalScroll
 import androidx.activity.compose.BackHandler
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ButtonGroupDefaults
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -38,13 +33,11 @@ import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedSecureTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -62,12 +55,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -541,32 +532,7 @@ private fun UnlockForm(
                     CheckboxRow(R.string.database_use_password, state.usePassword, !unlocking, onUsePasswordChange)
                 }
                 if (state.showsPassword) PasswordField(state.password, enabled = !unlocking, onUnlock)
-                OutlinedButton(
-                    onClick = onPickKeyFile,
-                    shapes = ButtonDefaults.shapes(),
-                    enabled = !unlocking,
-                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                ) {
-                    Text(stringResource(if (state.hasKeyFile) R.string.database_change_key_file else R.string.database_pick_key_file))
-                }
-                state.keyName?.let {
-                    Text(
-                        stringResource(R.string.database_key_file_chosen, it),
-                        Modifier.padding(top = 4.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.MiddleEllipsis,
-                    )
-                }
-                if (state.hasKeyFile) {
-                    TextButton(
-                        onClick = onRemoveKeyFile,
-                        shapes = ButtonDefaults.shapes(),
-                        enabled = !unlocking,
-                        modifier = Modifier.align(Alignment.CenterHorizontally),
-                    ) { Text(stringResource(R.string.database_remove_key_file)) }
-                }
+                KeyFileChoice(state.keyName, state.hasKeyFile, enabled = !unlocking, onPickKeyFile, onRemoveKeyFile)
                 CheckboxRow(R.string.database_use_yubikey, state.useYubiKey, !unlocking, onUseYubiKeyChange)
                 if (state.useYubiKey) SlotChoice(state.slotOne, enabled = !unlocking, onSlotOneChange)
                 state.error?.let {
@@ -615,45 +581,6 @@ private fun PasswordField(password: TextFieldState, enabled: Boolean, onUnlock: 
         onKeyboardAction = { onUnlock() },
         modifier = Modifier.fillMaxWidth().padding(top = 16.dp).testTag(TestTags.PASSWORD),
     )
-}
-
-@Composable
-private fun CheckboxRow(label: Int, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(top = 8.dp)
-            .heightIn(min = 48.dp)
-            .toggleable(checked, enabled = enabled, role = Role.Checkbox, onValueChange = onChange),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Checkbox(checked, onCheckedChange = null, enabled = enabled)
-        Spacer(Modifier.width(12.dp))
-        Text(stringResource(label), style = MaterialTheme.typography.bodyLarge)
-    }
-}
-
-@Composable
-private fun SlotChoice(slotOne: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
-    val slots = listOf(R.string.database_yubikey_slot_one to true, R.string.database_yubikey_slot_two to false)
-    Row(
-        Modifier.fillMaxWidth().padding(top = 4.dp).selectableGroup(),
-        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
-    ) {
-        slots.forEachIndexed { index, (label, one) ->
-            ToggleButton(
-                checked = slotOne == one,
-                // Tapping the chosen slot keeps it chosen, like a radio button.
-                onCheckedChange = { onChange(one) },
-                modifier = Modifier.weight(1f).semantics { role = Role.RadioButton },
-                enabled = enabled,
-                shapes = if (index == 0) ButtonGroupDefaults.connectedLeadingButtonShapes()
-                else ButtonGroupDefaults.connectedTrailingButtonShapes(),
-            ) {
-                Text(stringResource(label))
-            }
-        }
-    }
 }
 
 /** A slow step under way, such as unlocking or creating a database, with a way to cancel it. */

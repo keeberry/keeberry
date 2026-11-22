@@ -2,7 +2,10 @@ package app.keeberry
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -51,12 +54,52 @@ class CreateDatabaseScreenTest {
     }
 
     @Test
+    fun offersAYubiKeySlotAndLetsThePasswordGoNextToIt() {
+        ActivityScenario.launch(CreateDatabaseActivity::class.java).use {
+            compose.onNodeWithTag(TestTags.USE_YUBIKEY).performScrollTo().performClick()
+            compose.onNodeWithText(context.getString(R.string.database_yubikey_slot_two)).performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText(context.getString(R.string.create_database_yubikey_hint)).performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText(context.getString(R.string.database_use_password)).performScrollTo().performClick()
+            compose.onAllNodes(hasTestTag(TestTags.NEW_PASSWORD)).assertCountEquals(0)
+        }
+    }
+
+    @Test
+    fun writesADatabaseThatUnlocksWithAGeneratedKeyFileAlone() {
+        val key = emptyDocument("created.keyx")
+        val uri = emptyDocument("created-key.kdbx")
+        ActivityScenario.launch(CreateDatabaseActivity::class.java).use { scenario ->
+            lateinit var model: CreateDatabaseViewModel
+            scenario.onActivity {
+                model = ViewModelProvider(it)[CreateDatabaseViewModel::class.java]
+                model.createKeyFile(key.uri, "fallback.keyx")
+            }
+            compose.waitUntil(10_000) { model.keyName != null || model.error != null }
+            assertEquals("created.keyx", model.keyName)
+            assertTrue(key.file.readText().contains("<Version>2.0</Version>"))
+            compose.onNodeWithText(context.getString(R.string.create_database_key_file_warning))
+                .performScrollTo()
+                .assertIsDisplayed()
+            scenario.onActivity {
+                model.onUsePasswordChanged(false)
+                model.create(uri.uri, pickFlags = 0, it)
+            }
+            compose.waitUntil(30_000) { model.created != null || model.error != null }
+            assertEquals("created-key.kdbx", model.created?.name)
+        }
+
+        val intent = Intent(context, DatabaseActivity::class.java).setData(uri.uri)
+        ActivityScenario.launch<DatabaseActivity>(intent).use { scenario ->
+            scenario.onActivity { ViewModelProvider(it)[DatabaseViewModel::class.java].setKeyFile(key.uri, "created.keyx") }
+            compose.onNodeWithTag(TestTags.UNLOCK).performScrollTo().performClickWhenSettled(compose)
+            val empty = context.getString(R.string.database_empty)
+            compose.waitUntil(30_000) { compose.onAllNodes(hasText(empty)).fetchSemanticsNodes().isNotEmpty() }
+        }
+    }
+
+    @Test
     fun writesADatabaseThatUnlocksWithItsPassword() {
-        // Stands in for the document the system picker creates.
-        val file = File(context.cacheDir, "fixtures/created.kdbx")
-        file.parentFile?.mkdirs()
-        file.writeBytes(ByteArray(0))
-        val uri = FileProvider.getUriForFile(context, "app.keeberry.fixtures", file)
+        val (file, uri) = emptyDocument("created.kdbx")
         ActivityScenario.launch(CreateDatabaseActivity::class.java).use { scenario ->
             compose.onNodeWithTag(TestTags.NEW_NAME).performTextInput("Device test")
             compose.onNodeWithTag(TestTags.NEW_PASSWORD).performTextInput("secret")
@@ -64,7 +107,7 @@ class CreateDatabaseScreenTest {
             lateinit var model: CreateDatabaseViewModel
             scenario.onActivity {
                 model = ViewModelProvider(it)[CreateDatabaseViewModel::class.java]
-                model.create(uri, pickFlags = 0)
+                model.create(uri, pickFlags = 0, it)
             }
             // The KDF runs off the main thread, which Compose's idling doesn't track.
             compose.waitUntil(30_000) { model.created != null || model.error != null }
@@ -82,5 +125,15 @@ class CreateDatabaseScreenTest {
             compose.waitUntil(30_000) { compose.onAllNodes(hasText(empty)).fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Device test").assertIsDisplayed()
         }
+    }
+
+    private data class Document(val file: File, val uri: Uri)
+
+    /** Stands in for the empty document the system picker creates. */
+    private fun emptyDocument(name: String): Document {
+        val file = File(context.cacheDir, "fixtures/$name")
+        file.parentFile?.mkdirs()
+        file.writeBytes(ByteArray(0))
+        return Document(file, FileProvider.getUriForFile(context, "app.keeberry.fixtures", file))
     }
 }
