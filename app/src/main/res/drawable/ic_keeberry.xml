@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The KeeBerry logo (blueberry with a keyhole cut out). The start screen tints it from the Compose
-     colour scheme, so the logo follows Material You colours. -->
+<!-- The KeeBerry logo (blueberry with a star crown and a keyhole cut out). The start screen tints
+     it from the Compose colour scheme, so the logo follows Material You colours. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -8,6 +8,12 @@
     android:viewportHeight="108">
     <path
         android:fillColor="#FFFFFFFF"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3.64"
+        android:strokeLineJoin="round"
+        android:pathData="M54,21.12L58.43,27.06L70.07,27.54L61.18,31.7L63.93,37.92L54,34.56L44.07,37.92L46.82,31.7L37.93,27.54L49.57,27.06Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
         android:fillType="evenOdd"
-        android:pathData="M43.79,31.93L44.49,24.59Q44.6,23.4 45.54,24.15L49.45,27.26Q50,27.7 50.37,27.1L53.37,22.22Q54,21.2 54.63,22.22L57.63,27.1Q58,27.7 58.55,27.26L62.46,24.15Q63.4,23.4 63.51,24.59L64.21,31.93A28,28 0 1 1 43.79,31.93ZM50.8,57.83A8,8 0 1 1 57.2,57.83L59.56,73.42Q59.8,75 58.2,75L49.8,75Q48.2,75 48.44,73.42Z" />
+        android:pathData="M25,56A29,29 0 1 1 83,56A29,29 0 1 1 25,56ZM49.93,59.94Q49.81,57.48 47.72,55.63A8.624,8.624 0 1 1 60.28,55.63Q58.19,57.48 58.07,59.94L59.67,67.09Q60.41,70.78 56.71,70.78L51.29,70.78Q47.59,70.78 48.33,67.09Z" />
 </vector>

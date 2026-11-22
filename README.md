@@ -1,4 +1,8 @@
-# <img src="design/logo/keeberry-icon.svg" width="40" height="40" alt="KeeBerry logo"/> KeeBerry
+<p align="center">
+  <img src="design/logo/keeberry-mark.svg" width="106" height="120" alt="KeeBerry logo"/>
+</p>
+
+<h1 align="center">KeeBerry</h1>
 
 [![CI](https://github.com/keeberry/keeberry/actions/workflows/ci.yml/badge.svg)](https://github.com/keeberry/keeberry/actions/workflows/ci.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
