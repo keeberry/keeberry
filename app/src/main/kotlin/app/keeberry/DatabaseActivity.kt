@@ -9,12 +9,14 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult
 import androidx.compose.foundation.text.input.clearText
 import androidx.lifecycle.ViewModelProvider
 import app.keeberry.ui.BrowserState
 import app.keeberry.ui.KeeBerryTheme
 import app.keeberry.ui.DatabaseScreen
+import app.keeberry.ui.MasterKeyActions
 import app.keeberry.ui.UnlockState
 
 class DatabaseActivity : ComponentActivity() {
@@ -28,6 +30,23 @@ class DatabaseActivity : ComponentActivity() {
         val uri = result.data?.data
         if (uri?.scheme == ContentResolver.SCHEME_CONTENT) model.setKeyFile(uri, documentName(uri))
         else model.error = R.string.database_key_file_error
+    }
+
+    private val pickNewKeyDocument = registerForActivityResult(StartActivityForResult()) { result ->
+        pickingKey = false
+        if (result.resultCode != RESULT_OK) return@registerForActivityResult
+        val form = model.keyChange ?: return@registerForActivityResult
+        val uri = result.data?.data
+        if (uri?.scheme == ContentResolver.SCHEME_CONTENT) form.credentials.setKeyFile(uri, documentName(uri))
+        else form.error = R.string.database_key_file_error
+    }
+
+    private val createNewKeyDocument = registerForActivityResult(StartActivityForResult()) { result ->
+        pickingKey = false
+        if (result.resultCode != RESULT_OK) return@registerForActivityResult
+        val uri = result.data?.data ?: return@registerForActivityResult
+        if (uri.scheme == ContentResolver.SCHEME_CONTENT) model.createKeyFile(uri, newKeyFileName())
+        else model.keyChange?.error = R.string.create_database_key_file_save_error
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -66,6 +85,8 @@ class DatabaseActivity : ComponentActivity() {
                         )
                     },
                     editor = model.editor,
+                    keyChange = model.keyChange,
+                    keyChanged = model.keyChanged,
                     onBack = ::finish,
                     onLock = ::finish,
                     onUnlock = { model.unlock(databaseUri, this) },
@@ -85,29 +106,54 @@ class DatabaseActivity : ComponentActivity() {
                     onShowBin = { model.showingBin = it },
                     onSaveEntry = model::saveEditing,
                     onDiscardEntry = model::discardEditing,
+                    keyActions = MasterKeyActions(
+                        onStart = model::startKeyChange,
+                        onChange = { model.changeMasterKey(this) },
+                        onCancel = model::cancelKeyChange,
+                        onDiscard = model::discardKeyChange,
+                        onPickKeyFile = { launchPicker(pickNewKeyDocument, openKeyDocument()) },
+                        onNewKeyFile = {
+                            val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
+                                .addCategory(Intent.CATEGORY_OPENABLE)
+                                // Octet-stream keeps the .keyx extension: providers add their own for known types only.
+                                .setType("application/octet-stream")
+                                .putExtra(Intent.EXTRA_TITLE, newKeyFileName())
+                            launchPicker(createNewKeyDocument, intent)
+                        },
+                        onChangedShown = { model.keyChanged = false },
+                    ),
                 )
             }
         }
     }
 
-    private fun chooseKeyFile() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
-            .addCategory(Intent.CATEGORY_OPENABLE)
-            .setType("*/*")
+    private fun chooseKeyFile() = launchPicker(pickKeyDocument, openKeyDocument())
+
+    private fun openKeyDocument() = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+
+    private fun newKeyFileName(): String {
+        val name = model.database?.name?.takeIf { it.isNotBlank() }
+            ?: intent.getStringExtra(EXTRA_DISPLAY_NAME)?.substringBeforeLast('.')
+        return "${name.orEmpty().toFileName()}.keyx"
+    }
+
+    private fun launchPicker(launcher: ActivityResultLauncher<Intent>, intent: Intent) {
         try {
             pickingKey = true
-            pickKeyDocument.launch(intent)
+            launcher.launch(intent)
         } catch (_: ActivityNotFoundException) {
             pickingKey = false
-            model.error = R.string.file_picker_unavailable
+            val form = model.keyChange
+            if (form != null) form.error = R.string.file_picker_unavailable else model.error = R.string.file_picker_unavailable
         }
     }
 
     override fun onStop() {
         // A configuration change recreates this screen around the same model, so only leaving
-        // the app clears the password and locks the database.
-        if (!isChangingConfigurations) {
-            if (!pickingKey) model.password.clearText()
+        // the app clears the password and locks the database. A key file picker the user opened
+        // keeps both, so the forms still hold what was typed when it returns.
+        if (!isChangingConfigurations && !pickingKey) {
+            model.password.clearText()
             if (model.database != null || model.isUnlocking) {
                 model.lock()
                 finish()

@@ -3,6 +3,7 @@ package app.keeberry
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.hasAnyAncestor
@@ -13,6 +14,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.Lifecycle
@@ -22,11 +24,14 @@ import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.keeberry.kdbx.Database
+import app.keeberry.kdbx.KdbxException
+import app.keeberry.kdbx.KdbxFailure
 import app.keeberry.kdbx.KdbxReader
 import app.keeberry.kdbx.NativeArgon2
 import app.keeberry.ui.TestTags
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -309,11 +314,53 @@ class DatabaseScreenTest {
         assertEquals(Lifecycle.State.DESTROYED, scenario.state)
     }
 
+    @Test
+    fun changesTheMasterKeyToANewPassword() = withDatabase {
+        unlock()
+        compose.onNodeWithTag(TestTags.MORE_OPTIONS).performClick()
+        compose.onNodeWithTag(TestTags.CHANGE_MASTER_KEY).performClick()
+        compose.onNodeWithTag(TestTags.NEW_PASSWORD).performTextInput("changed")
+        compose.onNodeWithTag(TestTags.NEW_CONFIRMATION).performTextInput("chagned")
+        compose.onNodeWithTag(TestTags.SAVE_MASTER_KEY).performScrollTo().performClickWhenSettled(compose)
+        compose.onNodeWithText(context.getString(R.string.create_database_password_mismatch)).performScrollTo().assertIsDisplayed()
+
+        compose.onNodeWithTag(TestTags.NEW_CONFIRMATION).performTextClearance()
+        compose.onNodeWithTag(TestTags.NEW_CONFIRMATION).performTextInput("changed")
+        compose.onNodeWithTag(TestTags.SAVE_MASTER_KEY).performScrollTo().performClickWhenSettled(compose)
+        waitForText(context.getString(R.string.master_key_changed_title), 30_000)
+        compose.onNodeWithText(context.getString(R.string.close_dialog)).performClick()
+        compose.onNodeWithText("Second entry").assertIsDisplayed()
+
+        savedFile("changed").use { assertEquals(listOf("Sample entry", "Second entry"), it.entries.map { entry -> entry.title }) }
+        val old = assertThrows(KdbxException::class.java) { savedFile().close() }
+        assertEquals(KdbxFailure.CREDENTIALS, old.failure)
+
+        // The open database carries the new key, so changes still save.
+        compose.onNodeWithText("Sample entry").performClick()
+        compose.onNodeWithTag(TestTags.DELETE_ENTRY).performClick()
+        compose.onNodeWithTag(TestTags.CONFIRM_DELETE).performClick()
+        compose.waitUntil(15_000) { compose.onAllNodes(hasText("Sample entry")).fetchSemanticsNodes().isEmpty() }
+        savedFile("changed").use { assertEquals(listOf("Second entry"), it.entries.map { entry -> entry.title }) }
+    }
+
+    @Test
+    fun closingTheMasterKeyFormLeavesTheKeyAsItWas() = withDatabase {
+        unlock()
+        compose.onNodeWithTag(TestTags.MORE_OPTIONS).performClick()
+        compose.onNodeWithTag(TestTags.CHANGE_MASTER_KEY).performClick()
+        compose.onNodeWithTag(TestTags.NEW_PASSWORD).performTextInput("changed")
+        Espresso.closeSoftKeyboard()
+        Espresso.pressBack()
+        compose.onNodeWithText("Second entry").assertIsDisplayed()
+        compose.onAllNodes(hasTestTag(TestTags.SAVE_MASTER_KEY)).assertCountEquals(0)
+        savedFile().close()
+    }
+
     private var fixture = ""
 
     /** The fixture file as the app left it. */
-    private fun savedFile(): Database = File(context.cacheDir, "fixtures/$fixture").inputStream().use {
-        KdbxReader(NativeArgon2(1L shl 30)).open(it, "fixture-only".toCharArray())
+    private fun savedFile(password: String = "fixture-only"): Database = File(context.cacheDir, "fixtures/$fixture").inputStream().use {
+        KdbxReader(NativeArgon2(1L shl 30)).open(it, password.toCharArray())
     }
 
     private fun withDatabase(fixture: String = "modern-argon2id.kdbx", test: (ActivityScenario<DatabaseActivity>) -> Unit) {
@@ -341,7 +388,7 @@ class DatabaseScreenTest {
         compose.waitUntil(15_000) { compose.onAllNodes(hasTestTag(TestTags.SAVE_ENTRY)).fetchSemanticsNodes().isEmpty() }
     }
 
-    private fun waitForText(text: String) {
-        compose.waitUntil(15_000) { compose.onAllNodes(hasText(text)).fetchSemanticsNodes().isNotEmpty() }
+    private fun waitForText(text: String, timeout: Long = 15_000) {
+        compose.waitUntil(timeout) { compose.onAllNodes(hasText(text)).fetchSemanticsNodes().isNotEmpty() }
     }
 }

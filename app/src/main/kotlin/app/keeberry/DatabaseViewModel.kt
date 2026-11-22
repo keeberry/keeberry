@@ -86,6 +86,11 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
     var changing by mutableStateOf(false)
         private set
     var changeError by mutableStateOf<Int?>(null)
+    /** The open change-master-key form, if any. */
+    var keyChange by mutableStateOf<MasterKeyChange?>(null)
+        private set
+    /** Whether the master key just changed, which the screen confirms once. */
+    var keyChanged by mutableStateOf(false)
 
     val canEdit: Boolean get() = database?.editable == true && writable
 
@@ -132,6 +137,7 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
     /** Moves a pending YubiKey request to the recreated screen, which NFC discovery needs. */
     fun attach(activity: ComponentActivity) {
         hardware?.attach(activity)
+        keyChange?.hardware?.attach(activity)
     }
 
     /** Starts unlocking with what the form holds, and clears the typed password. */
@@ -305,6 +311,180 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
             reopened.close()
             throw error
         }
+    }
+
+    /** Opens the form that changes the master key, if nothing else is changing the database. */
+    fun startKeyChange() {
+        if (!canEdit || editor != null || saveJob != null || keyChange != null) return
+        keyChange = MasterKeyChange()
+    }
+
+    /** Closes the change-master-key form, unless a change is under way. */
+    fun discardKeyChange() {
+        val form = keyChange ?: return
+        if (form.busy) return
+        form.credentials.clearPasswords()
+        keyChange = null
+    }
+
+    /**
+     * Writes a new random key file to the empty document [uri] that the picker just created, for the
+     * change-master-key form. [suggestedName] stands in if the provider can't say what it named it.
+     */
+    fun createKeyFile(uri: Uri, suggestedName: String) {
+        val app = getApplication<Application>()
+        val form = keyChange
+        if (form == null || form.busy || form.savingKeyFile) {
+            viewModelScope.launch(Dispatchers.IO) { app.deleteDocument(uri) }
+            return
+        }
+        form.savingKeyFile = true
+        form.error = null
+        viewModelScope.launch {
+            val name = withContext(NonCancellable + Dispatchers.IO) { app.writeNewKeyFile(uri, suggestedName) }
+            form.savingKeyFile = false
+            if (name != null) form.credentials.setKeyFile(uri, name) else form.error = R.string.create_database_key_file_save_error
+        }
+    }
+
+    /**
+     * Encrypts the database under the credentials the form holds, then replaces the file the way a
+     * save does: it reads the file again, checks the result and keeps the original if writing fails.
+     * Until the key derivation is done, cancelling or locking stops it with the file untouched; after
+     * that, it runs to the end.
+     */
+    fun changeMasterKey(activity: ComponentActivity) {
+        val form = keyChange ?: return
+        val database = database ?: return
+        val uri = databaseUri ?: return
+        if (form.busy || form.savingKeyFile || saveJob != null) return
+        form.error = form.credentials.problem()
+        if (form.error != null) return
+        val key = database.key?.copy() ?: return
+        val pass = form.credentials.passwordCopy()
+        val keyFile = form.credentials.keyUri
+        val slot = form.credentials.slot
+        form.credentials.clearPasswords()
+        lateinit var job: Job
+        val hardware = slot?.let {
+            YubiKeyChallenge(getApplication(), it, R.string.master_key_changing) { prompt ->
+                if (form.job === job) form.progress = Progress(prompt, null)
+            }
+        }
+        hardware?.attach(activity)
+        job = viewModelScope.launch(start = CoroutineStart.LAZY) {
+            val result = withContext(NonCancellable + kdfDispatcher) {
+                try {
+                    Result.success(changeKeyOnWorker(job, form, uri, key, pass, keyFile, hardware))
+                } catch (error: Exception) {
+                    Result.failure(error)
+                } catch (_: OutOfMemoryError) {
+                    Result.failure(KdbxException(KdbxFailure.MEMORY))
+                } finally {
+                    pass?.fill('\u0000')
+                    key.close()
+                    hardware?.close()
+                }
+            }
+            withContext(NonCancellable + Dispatchers.Main.immediate) { finishKeyChange(database, form, job, result) }
+        }
+        form.job = job
+        form.hardware = hardware
+        form.cancelled = false
+        form.progress = Progress(R.string.master_key_changing, null)
+        saveJob = job
+        job.start()
+    }
+
+    private fun changeKeyOnWorker(
+        job: Job,
+        form: MasterKeyChange,
+        uri: Uri,
+        key: KdbxKey,
+        pass: CharArray?,
+        keyFile: Uri?,
+        hardware: YubiKeyChallenge?,
+    ): Database {
+        val app = getApplication<Application>()
+        val saver = KdbxSaver(
+            checkCancelled = { job.ensureActive() },
+            argon2 = app.nativeArgon2(),
+            aesKdf = NativeAesKdf(),
+            onStage = { stage ->
+                if (stage is KdbxStage.DerivingKey) {
+                    val update = Progress(R.string.database_unlock_deriving, stage.percent)
+                    main.post { if (form.job === job) form.progress = update }
+                }
+            },
+        )
+        val current = readFile(uri)
+        val rekeyed = saver.changeKey(current, key, pass, keyFile?.let { { openKeyFile(it) } }, hardware?.let { it::respond })
+        // From here nothing checks for a cancel, so the change runs to the end.
+        val check = KdbxSaver()
+        try {
+            val reopened = check.open(rekeyed.bytes, rekeyed.key)
+            try {
+                val same = check.open(current, key).use { before ->
+                    before.name == reopened.name &&
+                        before.entries.map { it.key } == reopened.entries.map { it.key } &&
+                        before.binned.map { it.key } == reopened.binned.map { it.key } &&
+                        before.groups.map { it.key } == reopened.groups.map { it.key }
+                }
+                if (!same) throw KdbxException(KdbxFailure.CORRUPT)
+                replaceFile(uri, rekeyed.bytes, current)
+                return reopened
+            } catch (error: Throwable) {
+                reopened.close()
+                throw error
+            }
+        } finally {
+            rekeyed.key.close()
+        }
+    }
+
+    private fun finishKeyChange(previous: Database, form: MasterKeyChange, job: Job, result: Result<Database>) {
+        if (saveJob === job) saveJob = null
+        form.job = null
+        form.hardware = null
+        form.progress = null
+        val changed = result.getOrNull()
+        // Locked while changing: if the file changed, nothing is shown any more.
+        if (database !== previous) {
+            changed?.close()
+            return
+        }
+        if (changed == null) {
+            if (!form.cancelled) form.error = keyChangeErrorMessage(result.exceptionOrNull())
+            return
+        }
+        previous.close()
+        database = changed
+        if (keyChange === form) keyChange = null
+        keyChanged = true
+    }
+
+    private fun keyChangeErrorMessage(error: Throwable?): Int = when {
+        error is YubiKeyException -> error.messageId
+        error is KdbxException && error.failure == KdbxFailure.KEY_FILE -> R.string.database_key_file_error
+        error is KdbxException && error.failure == KdbxFailure.MEMORY -> R.string.create_database_memory_error
+        else -> saveErrorMessage(error, R.string.entry_save_error)
+    }
+
+    /** Stops the change under way while it is still deriving the new key, or waiting for a YubiKey. */
+    fun cancelKeyChange() {
+        val form = keyChange ?: return
+        val job = form.job ?: return
+        form.cancelled = true
+        job.cancel()
+        form.hardware?.close()
+    }
+
+    private fun openKeyFile(uri: Uri): InputStream = try {
+        getApplication<Application>().contentResolver.openInputStream(uri) ?: throw IOException()
+    } catch (_: IOException) {
+        throw KdbxException(KdbxFailure.KEY_FILE)
+    } catch (_: SecurityException) {
+        throw KdbxException(KdbxFailure.KEY_FILE)
     }
 
     /**
@@ -509,6 +689,12 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
 
     fun lock() {
         cancel()
+        keyChange?.let {
+            cancelKeyChange()
+            it.credentials.clearPasswords()
+        }
+        keyChange = null
+        keyChanged = false
         editor?.clear()
         editor = null
         savedEntry = null

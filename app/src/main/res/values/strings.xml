@@ -115,6 +115,12 @@
     <string name="recycle_bin_changed_error">The recycle bin was changed elsewhere. Lock the database and unlock it again to see what’s in it now.</string>
     <string name="entry_save_damaged_error">Saving failed and the original file couldn’t be put back. Restore the database from a backup or your storage’s version history.</string>
     <string name="close_dialog">Close</string>
+    <string name="more_options">More options</string>
+    <string name="master_key_change">Change master key</string>
+    <string name="master_key_change_description">Choose what unlocks this database from now on: a master password, a key file, a YubiKey or any of them together. Copies of the file made before the change, such as backups, keep the old master key.</string>
+    <string name="master_key_changing">Changing…</string>
+    <string name="master_key_changed_title">Master key changed</string>
+    <string name="master_key_changed_message">From now on, unlock this database with its new credentials.</string>
     <string name="create_database">Create database</string>
     <string name="create_database_description">A new, empty KeePass database (KDBX 4), protected by a master password, a key file, a YubiKey or any of them together. You’ll choose where to save it next.</string>
     <string name="create_database_name">Database name</string>

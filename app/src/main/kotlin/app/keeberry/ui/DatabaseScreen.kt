@@ -24,6 +24,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.activity.compose.BackHandler
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -117,6 +119,7 @@ import app.keeberry.R
 import app.keeberry.DatabaseClipboard
 import app.keeberry.DatabaseViewModel
 import app.keeberry.EntryEditor
+import app.keeberry.MasterKeyChange
 import app.keeberry.kdbx.Database
 import app.keeberry.kdbx.DatabaseEntry
 import app.keeberry.kdbx.DatabaseField
@@ -180,17 +183,21 @@ internal fun DatabaseScreen(
     onShowBin: (Boolean) -> Unit,
     onSaveEntry: () -> Unit,
     onDiscardEntry: () -> Unit,
+    keyChange: MasterKeyChange? = null,
+    keyChanged: Boolean = false,
+    keyActions: MasterKeyActions = MasterKeyActions(),
 ) {
     // The list and the open entry keep their place while the entry form or the recycle bin covers them.
     val browserState = rememberSaveableStateHolder()
     if (browser != null) {
         val actions = BrowserActions(
             onBack, onLock, onSavedEntryShown, onNewEntry, onEditEntry, onDeleteEntry, onRestoreEntry, onEmptyBin, onDismissChange,
-            onShowBin,
+            onShowBin, keyActions.onStart,
         )
         // The bin starts at its list each time it opens.
         LaunchedEffect(browser.showingBin) { if (!browser.showingBin) browserState.removeState("bin") }
         when {
+            keyChange != null -> ChangeMasterKeyScreen(keyChange, keyActions)
             editor != null -> EntryEditorScreen(editor, onSave = onSaveEntry, onDiscard = onDiscardEntry)
             browser.showingBin -> browserState.SaveableStateProvider("bin") {
                 // Registered before the panes' own, so going back from an open entry still closes it first.
@@ -198,6 +205,17 @@ internal fun DatabaseScreen(
                 DatabaseBrowser(browser, fileName, actions, bin = true)
             }
             else -> browserState.SaveableStateProvider("browser") { DatabaseBrowser(browser, fileName, actions, bin = false) }
+        }
+        if (keyChanged) {
+            AlertDialog(
+                onDismissRequest = keyActions.onChangedShown,
+                title = { Text(stringResource(R.string.master_key_changed_title)) },
+                text = { Text(stringResource(R.string.master_key_changed_message)) },
+                confirmButton = {
+                    TextButton(keyActions.onChangedShown, shapes = ButtonDefaults.shapes()) { Text(stringResource(R.string.close_dialog)) }
+                },
+                properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn),
+            )
         }
         return
     }
@@ -255,7 +273,73 @@ private class BrowserActions(
     val onEmptyBin: () -> Unit,
     val onDismissChange: () -> Unit,
     val onShowBin: (Boolean) -> Unit,
+    val onChangeKey: () -> Unit,
 )
+
+/** What the change-master-key form can ask for. */
+internal class MasterKeyActions(
+    /** Opens the form. */
+    val onStart: () -> Unit = {},
+    /** Changes the key to what the form holds. */
+    val onChange: () -> Unit = {},
+    /** Stops the change under way. */
+    val onCancel: () -> Unit = {},
+    /** Closes the form. */
+    val onDiscard: () -> Unit = {},
+    val onPickKeyFile: () -> Unit = {},
+    val onNewKeyFile: () -> Unit = {},
+    /** Dismisses the note that the key changed. */
+    val onChangedShown: () -> Unit = {},
+)
+
+@Composable
+private fun ChangeMasterKeyScreen(change: MasterKeyChange, actions: MasterKeyActions) {
+    // Leaving mid-change stops it if it still can; the form only closes once nothing is under way.
+    val back = { if (change.busy) actions.onCancel() else actions.onDiscard() }
+    BackHandler(onBack = back)
+    NewCredentialsScreen(
+        title = R.string.master_key_change,
+        description = R.string.master_key_change_description,
+        credentials = change.credentials,
+        error = change.error,
+        progress = change.progress,
+        action = R.string.master_key_change,
+        busyAction = R.string.master_key_changing,
+        actionTag = TestTags.SAVE_MASTER_KEY,
+        onBack = back,
+        onAction = actions.onChange,
+        onCancel = actions.onCancel,
+        onPickKeyFile = actions.onPickKeyFile,
+        onNewKeyFile = actions.onNewKeyFile,
+    )
+}
+
+@Composable
+private fun MoreOptionsButton(onChangeKey: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        val label = stringResource(R.string.more_options)
+        WithTooltip(label) {
+            IconButton({ open = true }, shapes = IconButtonDefaults.shapes(), modifier = Modifier.testTag(TestTags.MORE_OPTIONS)) {
+                Icon(painterResource(R.drawable.ic_more_vert), label)
+            }
+        }
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            properties = PopupProperties(focusable = true, securePolicy = SecureFlagPolicy.SecureOn),
+        ) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.master_key_change)) },
+                onClick = {
+                    open = false
+                    onChangeKey()
+                },
+                modifier = Modifier.testTag(TestTags.CHANGE_MASTER_KEY),
+            )
+        }
+    }
+}
 
 /**
  * The entry list and the open entry, or with [bin] the recycle bin's: one pane at a time on phones,
@@ -342,6 +426,7 @@ private fun DatabaseBrowser(state: BrowserState, fileName: String?, actions: Bro
                                 ) { Text(stringResource(R.string.recycle_bin_empty_action)) }
                             }
                             LockButton(onLock)
+                            if (!bin && state.canEdit) MoreOptionsButton(actions.onChangeKey)
                         }
                         if (subtitle == null) {
                             TopAppBar(title = heading, navigationIcon = back, actions = buttons)

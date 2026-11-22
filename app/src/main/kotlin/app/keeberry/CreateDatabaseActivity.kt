@@ -38,7 +38,7 @@ class CreateDatabaseActivity : ComponentActivity() {
         picking = false
         if (result.resultCode != RESULT_OK) return@registerForActivityResult
         val uri = result.data?.data
-        if (uri?.scheme == ContentResolver.SCHEME_CONTENT) model.setKeyFile(uri, documentName(uri))
+        if (uri?.scheme == ContentResolver.SCHEME_CONTENT) model.credentials.setKeyFile(uri, documentName(uri))
         else model.error = R.string.database_key_file_error
     }
 
@@ -66,29 +66,12 @@ class CreateDatabaseActivity : ComponentActivity() {
                     finish()
                 }
                 CreateDatabaseScreen(
-                    CreateDatabaseState(
-                        name = model.name,
-                        password = model.password,
-                        confirmation = model.confirmation,
-                        offersPassword = model.hasOtherCredential,
-                        usePassword = model.usePassword,
-                        showsPassword = model.showsPassword,
-                        hasKeyFile = model.keyUri != null,
-                        keyName = model.keyName,
-                        useYubiKey = model.useYubiKey,
-                        slotOne = model.slotOne,
-                        error = model.error,
-                        progress = model.progress,
-                    ),
+                    CreateDatabaseState(model.name, model.credentials, model.error, model.progress),
                     onBack = ::finish,
                     onCreate = ::chooseLocation,
                     onCancel = model::cancel,
                     onPickKeyFile = ::chooseKeyFile,
                     onNewKeyFile = ::chooseKeyFileLocation,
-                    onRemoveKeyFile = model::removeKeyFile,
-                    onUsePasswordChange = model::onUsePasswordChanged,
-                    onUseYubiKeyChange = model::onUseYubiKeyChanged,
-                    onSlotOneChange = { model.slotOne = it },
                 )
             }
         }
@@ -130,7 +113,7 @@ class CreateDatabaseActivity : ComponentActivity() {
     override fun onStop() {
         // The passwords wait in the form while a picker is open. Leaving the app clears them;
         // a write already under way has its own copy and carries on.
-        if (!isChangingConfigurations && !picking) model.clearPasswords()
+        if (!isChangingConfigurations && !picking) model.credentials.clearPasswords()
         super.onStop()
     }
 
@@ -140,5 +123,5 @@ class CreateDatabaseActivity : ComponentActivity() {
 }
 
 /** [this] as a file name most providers accept: no path separators or reserved characters. */
-private fun String.toFileName(): String =
+internal fun String.toFileName(): String =
     replace(Regex("[\\\\/:*?\"<>|\\p{Cntrl}]"), "_").trim().trimStart('.').take(120).ifEmpty { "Database" }

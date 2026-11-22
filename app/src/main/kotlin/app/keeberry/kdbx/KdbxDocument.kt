@@ -546,10 +546,55 @@ internal class KdbxSaver(
     private val checkCancelled: () -> Unit = {},
     private val random: SecureRandom = SecureRandom(),
     private val now: () -> Long = System::currentTimeMillis,
+    private val argon2: Argon2Kdf = BouncyCastleArgon2(),
+    private val aesKdf: AesKdf = JcaAesKdf,
+    private val onStage: (KdbxStage) -> Unit = {},
 ) {
     private val reader = KdbxReader(chaCha20 = chaCha20, checkCancelled = checkCancelled)
 
     class Saved(val bytes: ByteArray, val uuid: ByteArray)
+
+    /** A database encrypted under a new master key, and that key. */
+    class Rekeyed(val bytes: ByteArray, val key: KdbxKey)
+
+    /**
+     * Encrypts [current], which [key] opens, under a new master key made of whichever of [password],
+     * the key file [keyFile] opens and the YubiKey's [challengeResponse] are given, combined as
+     * [KdbxReader] combines them. The KDF keeps its settings but gets a new salt, as in KeePass, and
+     * the document notes when its master key changed. [keyFile] is read and closed.
+     */
+    fun changeKey(
+        current: ByteArray,
+        key: KdbxKey,
+        password: CharArray?,
+        keyFile: (() -> InputStream)? = null,
+        challengeResponse: ((ByteArray) -> ByteArray)? = null,
+    ): Rekeyed {
+        require(password != null || keyFile != null || challengeResponse != null)
+        val document = reader.decryptWithKey(ByteArrayInputStream(current), key) { header, payload ->
+            KdbxDocument.read(header, payload, chaCha20, checkCancelled)
+        }
+        var transformed: ByteArray? = null
+        try {
+            val parameters = kdfParametersWithNewSalt(document.header.kdfParameters, random)
+            val header = KdbxHeader.read(DataInputStream(ByteArrayInputStream(document.header.rebuilt(mapOf(11 to parameters)))))
+            transformed = if (keyFile == null) {
+                transformKey(header, password, null, argon2, aesKdf, checkCancelled, challengeResponse, onStage)
+            } else keyFile().use {
+                transformKey(header, password, it, argon2, aesKdf, checkCancelled, challengeResponse, onStage)
+            }
+            document.root.child("Meta")?.let { meta ->
+                (meta.child("MasterKeyChanged") ?: meta.add("MasterKeyChanged")).text = kdbxTime(now())
+            }
+            val output = ByteArrayOutputStream(current.size + 4096)
+            KdbxWriter(random = random, now = now, chaCha20 = chaCha20)
+                .save(output, header, transformed, document.binaries, document::write)
+            return Rekeyed(output.toByteArray(), KdbxKey(transformed.copyOf()))
+        } finally {
+            transformed?.fill(0)
+            document.clear()
+        }
+    }
 
     /** Stores [fields] in entry [uuid], or in a new entry in [group] when it is null. */
     fun save(current: ByteArray, key: KdbxKey, uuid: ByteArray?, fields: List<EntryField>, group: ByteArray? = null): Saved {

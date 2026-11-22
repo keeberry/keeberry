@@ -74,14 +74,14 @@ class CreateDatabaseScreenTest {
                 model = ViewModelProvider(it)[CreateDatabaseViewModel::class.java]
                 model.createKeyFile(key.uri, "fallback.keyx")
             }
-            compose.waitUntil(10_000) { model.keyName != null || model.error != null }
-            assertEquals("created.keyx", model.keyName)
+            compose.waitUntil(10_000) { model.credentials.keyName != null || model.error != null }
+            assertEquals("created.keyx", model.credentials.keyName)
             assertTrue(key.file.readText().contains("<Version>2.0</Version>"))
             compose.onNodeWithText(context.getString(R.string.create_database_key_file_warning))
                 .performScrollTo()
                 .assertIsDisplayed()
             scenario.onActivity {
-                model.onUsePasswordChanged(false)
+                model.credentials.onUsePasswordChanged(false)
                 model.create(uri.uri, pickFlags = 0, it)
             }
             compose.waitUntil(30_000) { model.created != null || model.error != null }

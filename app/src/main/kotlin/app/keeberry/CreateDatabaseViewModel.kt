@@ -4,10 +4,8 @@ import android.app.Application
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
-import android.provider.DocumentsContract
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.text.input.TextFieldState
-import androidx.compose.foundation.text.input.clearText
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -17,8 +15,6 @@ import app.keeberry.kdbx.KdbxException
 import app.keeberry.kdbx.KdbxFailure
 import app.keeberry.kdbx.KdbxStage
 import app.keeberry.kdbx.KdbxWriter
-import app.keeberry.kdbx.writeKeyFile
-import com.yubico.yubikit.yubiotp.Slot
 import java.io.IOException
 import java.io.InputStream
 import kotlinx.coroutines.CoroutineStart
@@ -38,18 +34,7 @@ internal class CreateDatabaseViewModel(application: Application) : AndroidViewMo
     class Created(val uri: Uri, val name: String)
 
     val name = TextFieldState()
-    val password = TextFieldState()
-    val confirmation = TextFieldState()
-    /** Whether the master password is part of the key, which can only be turned off next to another credential. */
-    var usePassword by mutableStateOf(true)
-        private set
-    var useYubiKey by mutableStateOf(false)
-        private set
-    var slotOne by mutableStateOf(false)
-    var keyUri by mutableStateOf<Uri?>(null)
-        private set
-    var keyName by mutableStateOf<String?>(null)
-        private set
+    val credentials = NewCredentials(onChange = { error = null })
     var error by mutableStateOf<Int?>(null)
     var progress by mutableStateOf<DatabaseViewModel.Progress?>(null)
         private set
@@ -66,40 +51,9 @@ internal class CreateDatabaseViewModel(application: Application) : AndroidViewMo
     /** Whether a database or a new key file is being written, so the form waits for it. */
     val isBusy: Boolean get() = createJob != null || keyFileJob != null
 
-    /** Whether the form offers "Use master password", which only matters next to another credential. */
-    val hasOtherCredential: Boolean get() = keyUri != null || useYubiKey
-
-    val showsPassword: Boolean get() = !hasOtherCredential || usePassword
-
     /** The name stored in the database, which also suggests its file name. */
     val databaseName: String
         get() = name.text.toString().trim().ifEmpty { getApplication<Application>().getString(R.string.create_database_default_name) }
-
-    fun onUsePasswordChanged(checked: Boolean) {
-        usePassword = checked
-        if (!checked) clearPasswords()
-        error = null
-    }
-
-    fun onUseYubiKeyChanged(checked: Boolean) {
-        useYubiKey = checked
-        // With nothing else left, the password is the credential again.
-        if (!hasOtherCredential) usePassword = true
-        error = null
-    }
-
-    fun setKeyFile(uri: Uri, name: String?) {
-        keyUri = uri
-        keyName = name
-        error = null
-    }
-
-    fun removeKeyFile() {
-        keyUri = null
-        keyName = null
-        if (!hasOtherCredential) usePassword = true
-        error = null
-    }
 
     /**
      * Writes a new random key to the empty document [uri] that the picker just created, then uses
@@ -113,31 +67,15 @@ internal class CreateDatabaseViewModel(application: Application) : AndroidViewMo
         val app = getApplication<Application>()
         error = null
         keyFileJob = viewModelScope.launch {
-            val name = withContext(NonCancellable + Dispatchers.IO) {
-                try {
-                    writeKeyFile(app.contentResolver.openOutputStream(uri, "w") ?: throw IOException())
-                    app.documentName(uri) ?: suggestedName
-                } catch (_: IOException) {
-                    delete(uri)
-                    null
-                } catch (_: SecurityException) {
-                    delete(uri)
-                    null
-                }
-            }
+            val name = withContext(NonCancellable + Dispatchers.IO) { app.writeNewKeyFile(uri, suggestedName) }
             keyFileJob = null
-            if (name != null) setKeyFile(uri, name) else error = R.string.create_database_key_file_save_error
+            if (name != null) credentials.setKeyFile(uri, name) else error = R.string.create_database_key_file_save_error
         }
     }
 
     /** Checks the form before a location is chosen, and says what is missing. */
     fun validate(): Boolean {
-        error = when {
-            !showsPassword -> null
-            password.text.isEmpty() -> R.string.create_database_password_required
-            !password.text.contentEquals(confirmation.text) -> R.string.create_database_password_mismatch
-            else -> null
-        }
+        error = credentials.problem()
         return error == null
     }
 
@@ -155,10 +93,10 @@ internal class CreateDatabaseViewModel(application: Application) : AndroidViewMo
             return
         }
         val title = databaseName
-        val pass = if (showsPassword) password.text.let { text -> CharArray(text.length) { text[it] } } else null
-        val key = keyUri
-        val slot = if (!useYubiKey) null else if (slotOne) Slot.ONE else Slot.TWO
-        clearPasswords()
+        val pass = credentials.passwordCopy()
+        val key = credentials.keyUri
+        val slot = credentials.slot
+        credentials.clearPasswords()
         lateinit var job: Job
         val hardware = slot?.let {
             YubiKeyChallenge(getApplication(), it, R.string.create_database_creating) { prompt ->
@@ -244,17 +182,7 @@ internal class CreateDatabaseViewModel(application: Application) : AndroidViewMo
         return Created(uri, name)
     }
 
-    private fun delete(uri: Uri) {
-        // Each failure means the document is already gone or the provider can't delete it, and
-        // either way nothing more can be done.
-        try {
-            DocumentsContract.deleteDocument(getApplication<Application>().contentResolver, uri)
-        } catch (_: IOException) {
-        } catch (_: SecurityException) {
-        } catch (_: IllegalArgumentException) {
-        } catch (_: UnsupportedOperationException) {
-        }
-    }
+    private fun delete(uri: Uri) = getApplication<Application>().deleteDocument(uri)
 
     private fun finish(job: Job, result: Result<Created>) {
         val current = createJob === job
@@ -293,13 +221,8 @@ internal class CreateDatabaseViewModel(application: Application) : AndroidViewMo
         job.cancel()
     }
 
-    fun clearPasswords() {
-        password.clearText()
-        confirmation.clearText()
-    }
-
     override fun onCleared() {
         cancel()
-        clearPasswords()
+        credentials.clearPasswords()
     }
 }

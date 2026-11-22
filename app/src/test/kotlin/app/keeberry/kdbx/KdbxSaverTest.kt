@@ -409,6 +409,77 @@ class KdbxSaverTest {
     }
 
     /** Adds a group named Banking inside the root group of [file]. */
+    @Test
+    fun changesTheMasterKeyAcrossCiphersAndKdfsAndKeepsEverythingElse() {
+        val keyFile = ByteArray(32) { (it + 7).toByte() }
+        for (file in modern) {
+            val original = bytes(file)
+            open(file).use { database ->
+                val rekeyed = saver.changeKey(
+                    original, database.key!!, "new-password".toCharArray(), { keyFile.inputStream() }, ::modernYubiKey,
+                )
+                val before = header(original)
+                val after = header(rekeyed.bytes)
+                assertArrayEquals(before.cipherId, after.cipherId)
+                assertEquals(before.compression, after.compression)
+                assertFalse(before.masterSeed.contentEquals(after.masterSeed))
+                // The KDF settings stay, apart from a new salt.
+                val salt = saltRange(before.kdfParameters)
+                assertEquals(salt, saltRange(after.kdfParameters))
+                assertEquals(32, salt.last - salt.first + 1)
+                for (index in before.kdfParameters.indices) {
+                    if (index !in salt) assertEquals(file, before.kdfParameters[index], after.kdfParameters[index])
+                }
+                assertFalse(before.kdfParameters.sliceArray(salt).contentEquals(after.kdfParameters.sliceArray(salt)))
+
+                // The new credentials open it with a full key derivation, as another KeePass app would.
+                reader.open(rekeyed.bytes.inputStream(), "new-password".toCharArray(), keyFile.inputStream(), ::modernYubiKey)
+                    .use { reopened ->
+                        assertEquals(file, listOf("Sample entry", "Second entry"), reopened.entries.map { it.title })
+                        assertEquals("second-password", reopened.entries.last().field("Password").text())
+                    }
+                val old = assertThrows(KdbxException::class.java) { reader.open(rekeyed.bytes.inputStream(), password()).close() }
+                assertEquals(KdbxFailure.CREDENTIALS, old.failure)
+
+                // Apart from when the master key changed, the document is as it was.
+                val was = document(original, database.key!!)
+                val now = document(rekeyed.bytes, rekeyed.key)
+                val changed = now.root.child("Meta")!!.child("MasterKeyChanged")!!
+                assertEquals(kdbxTime(1_700_000_000_000L), changed.text)
+                // A document without the time gets it added.
+                val previous = was.root.child("Meta")!!.child("MasterKeyChanged")
+                if (previous != null) changed.text = previous.text else now.root.child("Meta")!!.children.remove(changed)
+                assertTrue(file, same(was.root, now.root))
+                assertEquals(was.binaries.map { it.toList() }, now.binaries.map { it.toList() })
+            }
+        }
+    }
+
+    @Test
+    fun changesToAKeyWithoutAPasswordAndBack() {
+        val keyFile = ByteArray(32) { (it + 7).toByte() }
+        open("modern-argon2id.kdbx").use { database ->
+            val keyOnly = saver.changeKey(bytes("modern-argon2id.kdbx"), database.key!!, null, { keyFile.inputStream() })
+            reader.open(keyOnly.bytes.inputStream(), null, keyFile.inputStream()).use { assertEquals(2, it.entries.size) }
+            val back = saver.changeKey(keyOnly.bytes, keyOnly.key, password())
+            reader.open(back.bytes.inputStream(), password()).use { assertEquals(2, it.entries.size) }
+            // The key the file was opened with has to still fit it.
+            val stale = assertThrows(KdbxException::class.java) { saver.changeKey(back.bytes, keyOnly.key, password()) }
+            assertEquals(KdbxFailure.CREDENTIALS, stale.failure)
+            assertThrows(IllegalArgumentException::class.java) { saver.changeKey(back.bytes, back.key, null) }
+        }
+    }
+
+    /** Where the salt "S" sits in encoded KDF parameters. */
+    private fun saltRange(parameters: ByteArray): IntRange {
+        val marker = byteArrayOf(0x42, 1, 0, 0, 0, 'S'.code.toByte())
+        val start = (0..parameters.size - marker.size).single { at ->
+            marker.indices.all { parameters[at + it] == marker[it] }
+        } + marker.size
+        val length = java.nio.ByteBuffer.wrap(parameters, start, 4).order(java.nio.ByteOrder.LITTLE_ENDIAN).int
+        return start + 4 until start + 4 + length
+    }
+
     private fun withSubgroup(original: ByteArray, file: String = "modern-argon2id.kdbx"): ByteArray = open(file).use { database ->
         rewrite(original, database.key!!) { document ->
             val top = document.root.child("Root")!!.child("Group")!!

@@ -2,10 +2,14 @@ package app.keeberry.kdbx
 
 import android.annotation.SuppressLint
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.InputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.nio.CharBuffer
 import java.security.MessageDigest
+import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
 
@@ -223,6 +227,36 @@ private fun runArgon2(
     } finally {
         if (!success) output.fill(0)
     }
+}
+
+/**
+ * KDBX 4 KDF parameters [encoded] with a new random salt of the same length in place of "S", and
+ * everything else, settings and unknown items alike, as it was and in the same order.
+ */
+internal fun kdfParametersWithNewSalt(encoded: ByteArray, random: SecureRandom): ByteArray {
+    KdfDictionary(encoded) // Checks the version and that the KDF is one KeeBerry runs.
+    val stream = DataInputStream(ByteArrayInputStream(encoded))
+    val output = ByteArrayOutputStream(encoded.size)
+    output.write(stream.takeBytes(2))
+    var salted = false
+    while (true) {
+        val type = stream.readUnsignedByte()
+        output.write(type)
+        if (type == 0) break
+        val name = stream.takeBytes(stream.readLittleInt())
+        var value = stream.takeBytes(stream.readLittleInt())
+        if (name.contentEquals(byteArrayOf('S'.code.toByte()))) {
+            checkKdbx(type == 0x42 && value.isNotEmpty())
+            value = ByteArray(value.size).also(random::nextBytes)
+            salted = true
+        }
+        for (part in listOf(name, value)) {
+            output.write(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(part.size).array())
+            output.write(part)
+        }
+    }
+    checkKdbx(salted)
+    return output.toByteArray()
 }
 
 private enum class KdfAlgorithm { AES, ARGON2D, ARGON2ID }
