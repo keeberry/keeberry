@@ -80,6 +80,7 @@ class DatabaseActivity : ComponentActivity() {
                     onEditEntry = model::startEditing,
                     onDeleteEntry = model::deleteEntry,
                     onRestoreEntry = model::restoreEntry,
+                    onEmptyBin = model::emptyBin,
                     onDismissChange = { model.changeError = null },
                     onShowBin = { model.showingBin = it },
                     onSaveEntry = model::saveEditing,

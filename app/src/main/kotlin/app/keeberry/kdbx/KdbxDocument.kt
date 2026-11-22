@@ -280,9 +280,12 @@ internal class EntryMissingException : Exception()
 /** Thrown when the group chosen for a new entry is no longer in the database. */
 internal class GroupMissingException : Exception()
 
+/** Thrown when the recycle bin no longer holds the entries shown, so emptying it would lose others. */
+internal class BinChangedException : Exception()
+
 /**
  * The changes KeeBerry makes to a document: a new entry, new values for an existing one, deleting
- * one, or restoring one from the recycle bin. Like KeePass, an edit keeps the entry's previous
+ * one, restoring one from the recycle bin, or emptying the bin. Like KeePass, an edit keeps the entry's previous
  * version in its history.
  */
 internal class EntryEdits(private val random: SecureRandom, private val now: () -> Long) {
@@ -358,6 +361,43 @@ internal class EntryEdits(private val random: SecureRandom, private val now: () 
         val previous = entry.child("PreviousParentGroup")?.text?.let(::decodeUuid)?.let { findGroup(top, it) }
         val outside = previous?.takeIf { group -> uuidOf(group)?.let { findGroup(bin, it) } == null }
         move(document, entry, path[path.size - 2], outside ?: top, kdbxTime(now()))
+    }
+
+    /**
+     * Deletes everything in the recycle bin for good, as KeePass empties it: its entries and groups
+     * go, each listed under the deleted objects, and the bin itself stays. [expected] names the entries
+     * the user saw there, by [hexString] UUID or an empty string for one without a valid UUID. If the
+     * bin holds others now, nothing is deleted.
+     */
+    fun emptyBin(document: KdbxDocument, expected: List<String>) {
+        val root = document.root.child("Root") ?: throw KdbxException(KdbxFailure.CORRUPT)
+        val top = root.child("Group") ?: throw KdbxException(KdbxFailure.CORRUPT)
+        val bin = document.root.child("Meta")?.let(::named)?.let { findGroup(top, it) }?.takeIf { it !== top }
+        val contents = bin?.children?.filter { it.name == "Entry" || it.name == "Group" }.orEmpty()
+        val entries = mutableListOf<XmlNode>()
+        val groups = mutableListOf<XmlNode>()
+        fun collect(node: XmlNode) {
+            if (node.name == "Entry") entries.add(node)
+            else {
+                groups.add(node)
+                node.children.filter { it.name == "Entry" || it.name == "Group" }.forEach(::collect)
+            }
+        }
+        contents.forEach(::collect)
+        val found = entries.map { entry -> uuidOf(entry)?.takeIf { it.size == 16 }?.hexString().orEmpty() }
+        if (found.sorted() != expected.sorted()) throw BinChangedException()
+        if (bin == null) return
+        val time = kdbxTime(now())
+        val deleted = root.child("DeletedObjects") ?: root.add("DeletedObjects")
+        for (node in entries + groups) {
+            val uuid = uuidOf(node)?.takeIf { it.size == 16 } ?: continue
+            deleted.add("DeletedObject").apply {
+                add("UUID", Base64.getEncoder().encodeToString(uuid))
+                add("DeletionTime", time)
+            }
+        }
+        bin.children.removeAll(contents)
+        contents.forEach(XmlNode::clear)
     }
 
     /**
@@ -525,6 +565,10 @@ internal class KdbxSaver(
     /** Moves entry [uuid] out of the recycle bin, back to the group it was deleted from. */
     fun restore(current: ByteArray, key: KdbxKey, uuid: ByteArray): ByteArray =
         rewrite(current, key) { EntryEdits(random, now).restore(it, uuid) }
+
+    /** Deletes everything in the recycle bin for good, if it still holds just the [expected] entries. */
+    fun emptyBin(current: ByteArray, key: KdbxKey, expected: List<String>): ByteArray =
+        rewrite(current, key) { EntryEdits(random, now).emptyBin(it, expected) }
 
     private fun rewrite(current: ByteArray, key: KdbxKey, edit: (KdbxDocument) -> Unit): ByteArray {
         val document = reader.decryptWithKey(ByteArrayInputStream(current), key) { header, payload ->

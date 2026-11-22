@@ -121,5 +121,7 @@ internal object TestTags {
     const val RECYCLE_BIN = "recycle_bin_button"
     const val RESTORE_ENTRY = "restore_entry_button"
     const val CONFIRM_RESTORE = "confirm_restore_button"
+    const val EMPTY_BIN = "empty_bin_button"
+    const val CONFIRM_EMPTY_BIN = "confirm_empty_bin_button"
 }
 

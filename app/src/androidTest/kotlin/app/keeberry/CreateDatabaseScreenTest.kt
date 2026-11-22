@@ -8,6 +8,7 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModelProvider
@@ -43,7 +44,9 @@ class CreateDatabaseScreenTest {
             compose.onNodeWithTag(TestTags.NEW_PASSWORD).performTextInput("secret")
             compose.onNodeWithTag(TestTags.NEW_CONFIRMATION).performTextInput("secrte")
             compose.onNodeWithTag(TestTags.CREATE).performClickWhenSettled(compose)
-            compose.onNodeWithText(context.getString(R.string.create_database_password_mismatch)).assertIsDisplayed()
+            compose.onNodeWithText(context.getString(R.string.create_database_password_mismatch))
+                .performScrollTo()
+                .assertIsDisplayed()
         }
     }
 

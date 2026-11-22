@@ -59,6 +59,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -183,6 +184,7 @@ internal fun DatabaseScreen(
     onEditEntry: (Int) -> Unit,
     onDeleteEntry: (position: Int, fromBin: Boolean) -> Unit,
     onRestoreEntry: (Int) -> Unit,
+    onEmptyBin: () -> Unit,
     onDismissChange: () -> Unit,
     onShowBin: (Boolean) -> Unit,
     onSaveEntry: () -> Unit,
@@ -192,7 +194,8 @@ internal fun DatabaseScreen(
     val browserState = rememberSaveableStateHolder()
     if (browser != null) {
         val actions = BrowserActions(
-            onBack, onLock, onSavedEntryShown, onNewEntry, onEditEntry, onDeleteEntry, onRestoreEntry, onDismissChange, onShowBin,
+            onBack, onLock, onSavedEntryShown, onNewEntry, onEditEntry, onDeleteEntry, onRestoreEntry, onEmptyBin, onDismissChange,
+            onShowBin,
         )
         // The bin starts at its list each time it opens.
         LaunchedEffect(browser.showingBin) { if (!browser.showingBin) browserState.removeState("bin") }
@@ -258,6 +261,7 @@ private class BrowserActions(
     val onEditEntry: (Int) -> Unit,
     val onDeleteEntry: (position: Int, fromBin: Boolean) -> Unit,
     val onRestoreEntry: (Int) -> Unit,
+    val onEmptyBin: () -> Unit,
     val onDismissChange: () -> Unit,
     val onShowBin: (Boolean) -> Unit,
 )
@@ -321,6 +325,11 @@ private fun DatabaseBrowser(state: BrowserState, fileName: String?, actions: Bro
     }
     val name = database.name.ifBlank { fileName ?: stringResource(R.string.open_database) }
     val adds = state.canEdit && !bin
+    // Entries without a valid UUID can't be changed one by one, but emptying the bin removes them too.
+    val empties = state.canEdit && bin && entries.isNotEmpty()
+    var confirmingEmpty by rememberSaveable { mutableStateOf(false) }
+    // Once the bin is empty, the dialog has done its job.
+    LaunchedEffect(entries.isEmpty()) { if (entries.isEmpty()) confirmingEmpty = false }
     NavigableListDetailPaneScaffold(
         navigator = navigator,
         listPane = {
@@ -334,6 +343,13 @@ private fun DatabaseBrowser(state: BrowserState, fileName: String?, actions: Bro
                         val back = @Composable { BackButton(if (bin) { { actions.onShowBin(false) } } else actions.onBack) }
                         val buttons: @Composable RowScope.() -> Unit = {
                             if (!bin && database.showsRecycleBin) RecycleBinButton { actions.onShowBin(true) }
+                            if (empties) {
+                                TextButton(
+                                    { confirmingEmpty = true },
+                                    shapes = ButtonDefaults.shapes(),
+                                    modifier = Modifier.testTag(TestTags.EMPTY_BIN),
+                                ) { Text(stringResource(R.string.recycle_bin_empty_action)) }
+                            }
                             LockButton(onLock)
                         }
                         if (subtitle == null) {
@@ -441,6 +457,22 @@ private fun DatabaseBrowser(state: BrowserState, fileName: String?, actions: Bro
             }
         },
     )
+    if (confirmingEmpty && empties) {
+        ChangeDialog(
+            title = R.string.recycle_bin_empty_title,
+            message = pluralStringResource(R.plurals.recycle_bin_empty_message, entries.size, entries.size),
+            confirm = R.string.recycle_bin_empty_action,
+            progress = R.string.recycle_bin_emptying,
+            confirmTag = TestTags.CONFIRM_EMPTY_BIN,
+            busy = state.changing,
+            error = state.changeError,
+            onConfirm = actions.onEmptyBin,
+            onDismiss = {
+                confirmingEmpty = false
+                actions.onDismissChange()
+            },
+        )
+    }
 }
 
 /** Which entry the list marks as open, when the details are beside it. */
@@ -1085,6 +1117,7 @@ private fun DatabasePreview(unlock: UnlockState = previewUnlock(), browser: Brow
             onEditEntry = {},
             onDeleteEntry = { _, _ -> },
             onRestoreEntry = {},
+            onEmptyBin = {},
             onDismissChange = {},
             onShowBin = {},
             onSaveEntry = {},

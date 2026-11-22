@@ -25,6 +25,7 @@ import app.keeberry.kdbx.KdbxReader
 import app.keeberry.kdbx.KdbxStage
 import app.keeberry.kdbx.NativeAesKdf
 import app.keeberry.kdbx.NativeArgon2
+import app.keeberry.kdbx.BinChangedException
 import app.keeberry.kdbx.Database
 import app.keeberry.kdbx.DatabaseGroup
 import app.keeberry.kdbx.EntryField
@@ -332,17 +333,43 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
         changed: (Database, ByteArray) -> Boolean,
     ) {
         val database = database ?: return
-        val uri = databaseUri ?: return
-        if (!canEdit || editor != null || saveJob != null) return
         val entries = if (fromBin) database.binned else database.entries
         val uuid = entries.getOrNull(position)?.uuid?.copyOf() ?: return
+        changeFile(missing, { current, key -> change(current, key, uuid) }) { changed(it, uuid) }
+    }
+
+    /**
+     * Deletes everything in the recycle bin for good. If the bin holds entries the user hasn't seen,
+     * added elsewhere since the unlock, the file is left as it was.
+     */
+    fun emptyBin() {
+        val database = database ?: return
+        if (database.binned.isEmpty()) return
+        val expected = database.binned.map { it.uuid?.hexString().orEmpty() }
+        changeFile(R.string.recycle_bin_changed_error, { current, key -> emptyBin(current, key, expected) }) { reopened ->
+            reopened.binned.isEmpty() && reopened.entries.size == database.entries.size
+        }
+    }
+
+    /**
+     * Like a save, reads the file again, applies [change], checks the result with [changed] and then
+     * replaces the file. [missing] explains a change whose subject is no longer as it was shown.
+     */
+    private fun changeFile(
+        missing: Int,
+        change: KdbxSaver.(ByteArray, KdbxKey) -> ByteArray,
+        changed: (Database) -> Boolean,
+    ) {
+        val database = database ?: return
+        val uri = databaseUri ?: return
+        if (!canEdit || editor != null || saveJob != null) return
         val key = database.key?.copy() ?: return
         changing = true
         changeError = null
         saveJob = viewModelScope.launch {
             val result = onWorker {
                 try {
-                    changeOnWorker(uri, key, uuid, change, changed)
+                    changeOnWorker(uri, key, change, changed)
                 } finally {
                     key.close()
                 }
@@ -355,16 +382,15 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
     private fun changeOnWorker(
         uri: Uri,
         key: KdbxKey,
-        uuid: ByteArray,
-        change: KdbxSaver.(ByteArray, KdbxKey, ByteArray) -> ByteArray,
-        changed: (Database, ByteArray) -> Boolean,
+        change: KdbxSaver.(ByteArray, KdbxKey) -> ByteArray,
+        changed: (Database) -> Boolean,
     ): Database {
         val saver = KdbxSaver()
         val current = readFile(uri)
-        val bytes = saver.change(current, key, uuid)
+        val bytes = saver.change(current, key)
         val reopened = saver.open(bytes, key)
         try {
-            if (!changed(reopened, uuid)) throw KdbxException(KdbxFailure.CORRUPT)
+            if (!changed(reopened)) throw KdbxException(KdbxFailure.CORRUPT)
             replaceFile(uri, bytes, current)
             return reopened
         } catch (error: Throwable) {
@@ -457,7 +483,7 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
     private fun saveErrorMessage(error: Throwable?, missing: Int = R.string.entry_save_missing_error): Int = when (error) {
         is SaveException -> error.messageId
         is SecurityException -> R.string.entry_save_permission_error
-        is EntryMissingException -> missing
+        is EntryMissingException, is BinChangedException -> missing
         is GroupMissingException -> R.string.entry_save_group_error
         is KdbxException -> when (error.failure) {
             KdbxFailure.CREDENTIALS -> R.string.entry_save_credentials_error

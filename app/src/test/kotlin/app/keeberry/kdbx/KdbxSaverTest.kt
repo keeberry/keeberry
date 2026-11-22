@@ -364,6 +364,50 @@ class KdbxSaverTest {
         }
     }
 
+    @Test
+    fun emptiesTheRecycleBinForGood() {
+        val original = bytes("recycle-bin.kdbx")
+        open("recycle-bin.kdbx").use { database ->
+            val expected = database.binned.map { it.uuid!!.hexString() }
+            val emptied = saver.emptyBin(original, database.key!!, expected)
+            saver.open(emptied, database.key).use { reopened ->
+                assertTrue(reopened.binned.isEmpty())
+                assertEquals(database.entries.map { it.title }, reopened.entries.map { it.title })
+                assertEquals(database.groups.map { it.path }, reopened.groups.map { it.path })
+            }
+            val before = document(original, database.key)
+            val after = document(emptied, database.key)
+            // The bin itself stays, empty, and Meta still names it.
+            val bin = groups(after.root).single { it.child("Name")?.text == "Recycle Bin" }
+            assertTrue(bin.children.none { it.name == "Entry" || it.name == "Group" })
+            assertTrue(same(before.root.child("Meta")!!, after.root.child("Meta")!!))
+            // Both entries and the deleted "Old" group are listed, so a sync doesn't bring them back.
+            val oldGroup = groups(before.root).single { it.child("Name")?.text == "Old" }.child("UUID")!!.text!!
+            val records = after.root.child("Root")!!.child("DeletedObjects")!!.childrenNamed("DeletedObject")
+                .map { it.child("UUID")!!.text!! }
+            val listed = records.map { decodeBase64(it).hexString() }
+            assertTrue(listed.containsAll(expected))
+            assertTrue(oldGroup in records)
+            assertEquals(groups(before.root).size - 1, groups(after.root).size)
+            before.clear()
+            after.clear()
+        }
+    }
+
+    @Test
+    fun refusesToEmptyABinThatChangedSinceTheUnlock() {
+        val original = bytes("recycle-bin.kdbx")
+        open("recycle-bin.kdbx").use { database ->
+            val expected = database.binned.map { it.uuid!!.hexString() }
+            // Another app deleted an entry the user hasn't seen in the bin.
+            val elsewhere = saver.delete(original, database.key!!, database.entries.first().uuid!!)
+            assertThrows(BinChangedException::class.java) { saver.emptyBin(elsewhere, database.key, expected) }
+            // Emptied elsewhere already counts as changed too.
+            val emptied = saver.emptyBin(original, database.key, expected)
+            assertThrows(BinChangedException::class.java) { saver.emptyBin(emptied, database.key, expected) }
+        }
+    }
+
     /** Adds a group named Banking inside the root group of [file]. */
     private fun withSubgroup(original: ByteArray, file: String = "modern-argon2id.kdbx"): ByteArray = open(file).use { database ->
         rewrite(original, database.key!!) { document ->

@@ -105,6 +105,14 @@
     <string name="entry_restoring">Restoring…</string>
     <string name="entry_restore_missing_error">This entry was restored or deleted elsewhere. Lock the database and unlock it again to see its current entries.</string>
     <string name="entry_delete_forever_action">Delete for good</string>
+    <string name="recycle_bin_empty_action">Empty</string>
+    <string name="recycle_bin_empty_title">Empty recycle bin?</string>
+    <plurals name="recycle_bin_empty_message">
+        <item quantity="one">The %1$d entry in the recycle bin will be deleted for good. This can’t be undone.</item>
+        <item quantity="other">All %1$d entries in the recycle bin will be deleted for good. This can’t be undone.</item>
+    </plurals>
+    <string name="recycle_bin_emptying">Emptying…</string>
+    <string name="recycle_bin_changed_error">The recycle bin was changed elsewhere. Lock the database and unlock it again to see what’s in it now.</string>
     <string name="entry_save_damaged_error">Saving failed and the original file couldn’t be put back. Restore the database from a backup or your storage’s version history.</string>
     <string name="close_dialog">Close</string>
     <string name="create_database">Create database</string>

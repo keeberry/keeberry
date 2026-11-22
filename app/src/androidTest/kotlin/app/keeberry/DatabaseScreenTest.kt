@@ -66,6 +66,7 @@ class DatabaseScreenTest {
         compose.onNodeWithTag(TestTags.ENTRY_USERNAME).performTextInput("added-user")
         compose.onNodeWithTag(TestTags.ENTRY_PASSWORD).performTextInput("added-password")
         compose.onNodeWithTag(TestTags.SAVE_ENTRY).performClick()
+        waitForSaved()
         // The saved entry opens.
         waitForText("added-user")
         compose.onNodeWithText("added-password").assertDoesNotExist()
@@ -84,7 +85,7 @@ class DatabaseScreenTest {
         compose.onNodeWithText("Passwords / Work").performClick()
         compose.onNodeWithTag(TestTags.ENTRY_TITLE).performTextInput("Grouped entry")
         compose.onNodeWithTag(TestTags.SAVE_ENTRY).performClick()
-        waitForText("Grouped entry")
+        waitForSaved()
         savedFile().use { database ->
             assertEquals("Passwords / Work", database.entries.single { it.title == "Grouped entry" }.group)
         }
@@ -146,6 +147,25 @@ class DatabaseScreenTest {
     }
 
     @Test
+    fun emptiesTheRecycleBin() = withDatabase("recycle-bin.kdbx") {
+        unlock(waitFor = "Live entry")
+        compose.onNodeWithTag(TestTags.RECYCLE_BIN).performClick()
+        compose.onNodeWithTag(TestTags.EMPTY_BIN).performClick()
+        val message = context.resources.getQuantityString(R.plurals.recycle_bin_empty_message, 2, 2)
+        compose.onNodeWithText(message).assertIsDisplayed()
+        compose.onNodeWithTag(TestTags.CONFIRM_EMPTY_BIN).performClick()
+        waitForText(context.getString(R.string.recycle_bin_empty))
+        compose.onNodeWithText("Deleted entry").assertDoesNotExist()
+        compose.onNodeWithText("Old entry").assertDoesNotExist()
+        // Nothing left to empty.
+        compose.onNodeWithTag(TestTags.EMPTY_BIN).assertDoesNotExist()
+        savedFile().use { database ->
+            assertTrue(database.binned.isEmpty())
+            assertEquals(listOf("Live entry", "Work entry"), database.entries.map { it.title }.sorted())
+        }
+    }
+
+    @Test
     fun editsAnEntryAndSavesItToTheFile() = withDatabase {
         unlock()
         compose.onNodeWithText("Sample entry").performClick()
@@ -153,6 +173,7 @@ class DatabaseScreenTest {
         compose.onNodeWithTag(TestTags.ENTRY_USERNAME).performTextClearance()
         compose.onNodeWithTag(TestTags.ENTRY_USERNAME).performTextInput("changed-user")
         compose.onNodeWithTag(TestTags.SAVE_ENTRY).performClick()
+        waitForSaved()
         waitForText("changed-user")
         compose.onNodeWithText("fixture-user").assertDoesNotExist()
         savedFile().use { database ->
@@ -314,6 +335,11 @@ class DatabaseScreenTest {
 
     private fun showPassword() =
         context.getString(R.string.database_show_field, context.getString(R.string.field_password))
+
+    /** The form stays open until the file is written, and the typed text matches while it is open. */
+    private fun waitForSaved() {
+        compose.waitUntil(15_000) { compose.onAllNodes(hasTestTag(TestTags.SAVE_ENTRY)).fetchSemanticsNodes().isEmpty() }
+    }
 
     private fun waitForText(text: String) {
         compose.waitUntil(15_000) { compose.onAllNodes(hasText(text)).fetchSemanticsNodes().isNotEmpty() }
