@@ -20,6 +20,7 @@ internal fun checkKdbx(valid: Boolean, failure: KdbxFailure = KdbxFailure.CORRUP
 
 internal class KdbxHeader private constructor(
     val major: Int,
+    val minor: Int,
     val encoded: ByteArray,
     private val fields: Map<Int, ByteArray>,
 ) {
@@ -98,7 +99,7 @@ internal class KdbxHeader private constructor(
                 if (id == 0) break
                 checkKdbx(fields.put(id, bytes) == null)
             }
-            return KdbxHeader(major, encoded.toByteArray(), fields)
+            return KdbxHeader(major, version and 0xffff, encoded.toByteArray(), fields)
         }
 
         private fun versionOf(prefix: ByteArray): Int {

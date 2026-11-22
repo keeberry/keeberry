@@ -37,7 +37,7 @@ running Android 9 or later.
 - Key files in XML (`.keyx` and `.key`), 64-character hex, or any other file
 - Searches entries by title, group, username, URL and notes
 - Adds, edits and deletes entries, including custom fields with hidden values and groups
-- Moves deleted entries to the recycle bin, where other KeePass apps can restore them
+- Moves deleted entries to the recycle bin, where you can restore them to their group or delete them for good
 - Remembers recently opened databases for quick access
 - Adaptive layout for phones, foldables and tablets, with light and dark themes
 

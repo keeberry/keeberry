@@ -68,7 +68,7 @@ private class DatabaseXml(
 ) : StrictXmlHandler() {
     private enum class Tag(val hasText: Boolean = false) {
         FILE, META, ROOT, GROUP, ENTRY, FIELD, KEY(true), VALUE(true),
-        GROUP_NAME(true), GROUP_UUID(true), ENTRY_UUID(true), DATABASE_NAME(true), HEADER_HASH(true),
+        GROUP_NAME(true), GROUP_UUID(true), ENTRY_UUID(true), PREVIOUS_GROUP(true), DATABASE_NAME(true), HEADER_HASH(true),
         RECYCLE_BIN_UUID(true), RECYCLE_BIN_ENABLED(true), OTHER,
     }
 
@@ -118,11 +118,14 @@ private class DatabaseXml(
     private val allGroups = mutableListOf<List<Group>>()
     private var recycleBinEnabled = true
     private val entries = mutableListOf<DatabaseEntry>()
-    // The groups each entry sat in, so entries in the recycle bin can be dropped once its UUID is known.
+    // The groups each entry sat in, so entries in the recycle bin can be told apart once its UUID is known.
     private val entryGroups = mutableListOf<List<Group>>()
+    // The group each entry was moved from, which a restore from the recycle bin puts it back in.
+    private val previousGroups = mutableListOf<ByteArray?>()
     private var recycleBin: ByteArray? = null
     private var fields = mutableListOf<DatabaseField>()
     private var entryUuid: ByteArray? = null
+    private var previousGroup: ByteArray? = null
     private var fieldName: String? = null
     private var fieldValue: ByteArray? = null
     private var fieldProtected = false
@@ -195,8 +198,10 @@ private class DatabaseXml(
                 retain(group.length.toLong() * 2)
                 entries.add(DatabaseEntry(group, fields, entryUuid))
                 entryGroups.add(groups.toList())
+                previousGroups.add(previousGroup)
                 fields = mutableListOf()
                 entryUuid = null
+                previousGroup = null
             }
             Tag.GROUP -> groups.removeLast()
             else -> Unit
@@ -242,6 +247,7 @@ private class DatabaseXml(
         Tag.ENTRY -> when (name) {
             "String" -> Tag.FIELD
             "UUID" -> Tag.ENTRY_UUID
+            "PreviousParentGroup" -> Tag.PREVIOUS_GROUP
             else -> Tag.OTHER
         }
         Tag.FIELD -> when (name) {
@@ -266,6 +272,7 @@ private class DatabaseXml(
             }
             Tag.GROUP_UUID -> groups.last().uuid = uuidOf(text)
             Tag.ENTRY_UUID -> entryUuid = uuidOf(text)
+            Tag.PREVIOUS_GROUP -> previousGroup = uuidOf(text)
             // An all-zero UUID means the database has no recycle bin.
             Tag.RECYCLE_BIN_UUID -> recycleBin = uuidOf(text)?.takeIf { uuid -> uuid.any { it != 0.toByte() } }
             // KeePass treats anything but False as enabled.
@@ -309,21 +316,34 @@ private class DatabaseXml(
     private fun uuidOf(text: String): ByteArray? =
         if (text.length > 64) null else runCatching { decodeBase64(text) }.getOrNull()?.takeIf { it.size == 16 }
 
-    /** Leaves out the recycle bin, the groups inside it and their entries, which it wipes. */
+    /**
+     * Keeps the entries in the recycle bin apart from the others. Each names the group a restore puts
+     * it in, as [EntryEdits.restore] chooses it: the group it was deleted from, or else the root group.
+     */
     fun database(): Database {
         checkKdbx(hasRoot)
         val bin = recycleBin
         fun binned(chain: List<Group>) = bin != null && chain.any { bin.contentEquals(it.uuid) }
+        fun pathOf(chain: List<Group>) = chain.map { it.name }.filter(String::isNotBlank).joinToString(" / ")
+        val outside = allGroups.filterNot(::binned)
         val live = mutableListOf<DatabaseEntry>()
+        val inBin = mutableListOf<DatabaseEntry>()
         entries.forEachIndexed { index, entry ->
-            if (binned(entryGroups[index])) entry.clear() else live.add(entry)
+            if (!binned(entryGroups[index])) {
+                live.add(entry)
+                return@forEachIndexed
+            }
+            val previous = previousGroups[index]
+            val target = previous?.let { uuid -> outside.firstOrNull { uuid.contentEquals(it.last().uuid) } }
+                ?: allGroups.first()
+            inBin.add(DatabaseEntry(pathOf(target), entry.fields, entry.uuid))
         }
-        val groups = allGroups.filterNot(::binned).mapNotNull { chain ->
+        val groups = outside.mapNotNull { chain ->
             // A group without a valid UUID can't be named in a save.
             val uuid = chain.last().uuid ?: return@mapNotNull null
-            DatabaseGroup(uuid, chain.map { it.name }.filter(String::isNotBlank).joinToString(" / "), chain.size - 1)
+            DatabaseGroup(uuid, pathOf(chain), chain.size - 1)
         }
-        return Database(name, live, groups = groups, recycleBin = recycleBinEnabled)
+        return Database(name, live, groups = groups, recycleBin = recycleBinEnabled, binned = inBin)
     }
 
     fun clear() {

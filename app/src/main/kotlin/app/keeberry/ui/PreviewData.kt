@@ -42,6 +42,11 @@ internal fun previewDatabase(entries: Boolean = true) = Database(
         DatabaseGroup(ByteArray(16) { 0x13 }, "Personal / Shopping", 1),
         DatabaseGroup(ByteArray(16) { 0x14 }, "Personal / Social", 1),
     ),
+    // Each binned entry names the group a restore puts it back in.
+    binned = if (!entries) emptyList() else listOf(
+        entry(6, "Personal / Shopping", "Old store", "alex@example.com", "https://old-shop.example.com"),
+        entry(7, "Personal", "Old router", "admin", ""),
+    ),
 )
 
 private fun field(name: String, value: String, protected: Boolean = false) =

@@ -118,5 +118,8 @@ internal object TestTags {
     const val ENTRY_GROUP = "entry_group"
     const val DELETE_ENTRY = "delete_entry_button"
     const val CONFIRM_DELETE = "confirm_delete_button"
+    const val RECYCLE_BIN = "recycle_bin_button"
+    const val RESTORE_ENTRY = "restore_entry_button"
+    const val CONFIRM_RESTORE = "confirm_restore_button"
 }
 

@@ -99,7 +99,50 @@ class DatabaseScreenTest {
         compose.onNodeWithTag(TestTags.CONFIRM_DELETE).performClick()
         compose.waitUntil(15_000) { compose.onAllNodes(hasText("Sample entry")).fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithText("Second entry").assertIsDisplayed()
-        savedFile().use { database -> assertEquals(listOf("Second entry"), database.entries.map { it.title }) }
+        savedFile().use { database ->
+            assertEquals(listOf("Second entry"), database.entries.map { it.title })
+            assertEquals(listOf("Sample entry"), database.binned.map { it.title })
+        }
+        // It waits in the recycle bin.
+        compose.onNodeWithTag(TestTags.RECYCLE_BIN).performClick()
+        compose.onNodeWithText("Sample entry").assertIsDisplayed()
+    }
+
+    @Test
+    fun restoresAnEntryFromTheRecycleBin() = withDatabase("recycle-bin.kdbx") {
+        unlock(waitFor = "Live entry")
+        compose.onNodeWithText("Deleted entry").assertDoesNotExist()
+        compose.onNodeWithTag(TestTags.RECYCLE_BIN).performClick()
+        compose.onNodeWithText("Deleted entry").performClick()
+        // Entries in the bin can't be edited, only restored or deleted.
+        compose.onNodeWithTag(TestTags.EDIT_ENTRY).assertDoesNotExist()
+        compose.onNodeWithTag(TestTags.RESTORE_ENTRY).performClick()
+        compose.onNodeWithText(context.getString(R.string.entry_restore_to_group, "Deleted entry", "Passwords")).assertIsDisplayed()
+        compose.onNodeWithTag(TestTags.CONFIRM_RESTORE).performClick()
+        compose.waitUntil(15_000) { compose.onAllNodes(hasText("Deleted entry")).fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithText("Old entry").assertIsDisplayed()
+        // Back from the bin, the entry is in the list again.
+        Espresso.pressBack()
+        compose.onNodeWithText("Deleted entry").assertIsDisplayed()
+        savedFile().use { database ->
+            assertEquals("Passwords", database.entries.single { it.title == "Deleted entry" }.group)
+            assertEquals(listOf("Old entry"), database.binned.map { it.title })
+        }
+    }
+
+    @Test
+    fun deletesAnEntryInTheRecycleBinForGood() = withDatabase("recycle-bin.kdbx") {
+        unlock(waitFor = "Live entry")
+        compose.onNodeWithTag(TestTags.RECYCLE_BIN).performClick()
+        compose.onNodeWithText("Old entry").performClick()
+        compose.onNodeWithTag(TestTags.DELETE_ENTRY).performClick()
+        compose.onNodeWithText(context.getString(R.string.entry_delete_for_good, "Old entry")).assertIsDisplayed()
+        compose.onNodeWithTag(TestTags.CONFIRM_DELETE).performClick()
+        compose.waitUntil(15_000) { compose.onAllNodes(hasText("Old entry")).fetchSemanticsNodes().isEmpty() }
+        savedFile().use { database ->
+            assertEquals(listOf("Deleted entry"), database.binned.map { it.title })
+            assertTrue(database.entries.none { it.title == "Old entry" })
+        }
     }
 
     @Test

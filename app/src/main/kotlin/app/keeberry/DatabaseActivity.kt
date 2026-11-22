@@ -61,7 +61,9 @@ class DatabaseActivity : ComponentActivity() {
                         progress = model.progress,
                     ),
                     browser = model.database?.let {
-                        BrowserState(it, model.canEdit, model.query, model.savedEntry, model.deleting, model.deleteError)
+                        BrowserState(
+                            it, model.canEdit, model.query, model.savedEntry, model.changing, model.changeError, model.showingBin,
+                        )
                     },
                     editor = model.editor,
                     onBack = ::finish,
@@ -77,7 +79,9 @@ class DatabaseActivity : ComponentActivity() {
                     onNewEntry = { model.startEditing(null) },
                     onEditEntry = model::startEditing,
                     onDeleteEntry = model::deleteEntry,
-                    onDismissDelete = { model.deleteError = null },
+                    onRestoreEntry = model::restoreEntry,
+                    onDismissChange = { model.changeError = null },
+                    onShowBin = { model.showingBin = it },
                     onSaveEntry = model::saveEditing,
                     onDiscardEntry = model::discardEditing,
                 )

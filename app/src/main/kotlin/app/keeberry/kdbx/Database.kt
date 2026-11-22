@@ -7,6 +7,8 @@ import java.io.Closeable
  * without asking for the credentials again. KDBX 3 databases have none and stay read only.
  * [groups] lists every group outside the recycle bin in document order, the root group first, and
  * [recycleBin] says whether deleting moves entries there instead of removing them.
+ * [binned] holds the entries in the recycle bin, its subgroups included. Each one's [DatabaseEntry.group]
+ * names the group restoring it puts it back in.
  */
 internal class Database(
     val name: String,
@@ -14,13 +16,18 @@ internal class Database(
     internal val key: KdbxKey? = null,
     val groups: List<DatabaseGroup> = emptyList(),
     val recycleBin: Boolean = true,
+    val binned: List<DatabaseEntry> = emptyList(),
 ) : Closeable {
     val editable: Boolean get() = key != null
 
-    internal fun withKey(key: KdbxKey) = Database(name, entries, key, groups, recycleBin)
+    /** Whether the database has a recycle bin to show: one deleting fills, or one with entries in it. */
+    val showsRecycleBin: Boolean get() = recycleBin || binned.isNotEmpty()
+
+    internal fun withKey(key: KdbxKey) = Database(name, entries, key, groups, recycleBin, binned)
 
     override fun close() {
         entries.forEach(DatabaseEntry::clear)
+        binned.forEach(DatabaseEntry::clear)
         key?.close()
     }
 }

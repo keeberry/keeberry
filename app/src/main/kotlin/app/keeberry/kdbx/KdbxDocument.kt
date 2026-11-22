@@ -281,8 +281,9 @@ internal class EntryMissingException : Exception()
 internal class GroupMissingException : Exception()
 
 /**
- * The changes KeeBerry makes to a document: a new entry, new values for an existing one, or deleting
- * one. Like KeePass, an edit keeps the entry's previous version in its history.
+ * The changes KeeBerry makes to a document: a new entry, new values for an existing one, deleting
+ * one, or restoring one from the recycle bin. Like KeePass, an edit keeps the entry's previous
+ * version in its history.
  */
 internal class EntryEdits(private val random: SecureRandom, private val now: () -> Long) {
     /**
@@ -328,10 +329,7 @@ internal class EntryEdits(private val random: SecureRandom, private val now: () 
         if (useBin) {
             val bin = recycleBin(meta, top, time)
             if (path.none { it === bin }) {
-                parent.children.remove(entry)
-                addEntry(bin, entry)
-                val times = entry.child("Times") ?: entry.add("Times").also { addTimes(it, time) }
-                (times.child("LocationChanged") ?: times.add("LocationChanged")).text = time
+                move(document, entry, parent, bin, time)
                 return
             }
         }
@@ -344,10 +342,50 @@ internal class EntryEdits(private val random: SecureRandom, private val now: () 
         }
     }
 
+    /**
+     * Moves the entry [uuid] out of the recycle bin, where it may sit in a deleted group, as KeePass
+     * restores it: back to the group it was deleted from, or to the root group when that group is
+     * gone or is in the bin too.
+     */
+    fun restore(document: KdbxDocument, uuid: ByteArray) {
+        val root = document.root.child("Root") ?: throw KdbxException(KdbxFailure.CORRUPT)
+        val top = root.child("Group") ?: throw KdbxException(KdbxFailure.CORRUPT)
+        val bin = document.root.child("Meta")?.let(::named)?.let { findGroup(top, it) }
+        // Restored from elsewhere since the unlock, or never deleted.
+        if (bin == null || bin === top) throw EntryMissingException()
+        val path = findPath(bin, uuid) ?: throw EntryMissingException()
+        val entry = path.last()
+        val previous = entry.child("PreviousParentGroup")?.text?.let(::decodeUuid)?.let { findGroup(top, it) }
+        val outside = previous?.takeIf { group -> uuidOf(group)?.let { findGroup(bin, it) } == null }
+        move(document, entry, path[path.size - 2], outside ?: top, kdbxTime(now()))
+    }
+
+    /**
+     * Moves [entry] from [parent] to [target] and notes when. KDBX 4.1 also records where it came
+     * from, which is how a restore from the recycle bin finds its group.
+     */
+    private fun move(document: KdbxDocument, entry: XmlNode, parent: XmlNode, target: XmlNode, time: String) {
+        parent.children.remove(entry)
+        addEntry(target, entry)
+        val times = entry.child("Times") ?: entry.add("Times").also { addTimes(it, time) }
+        (times.child("LocationChanged") ?: times.add("LocationChanged")).text = time
+        val from = uuidOf(parent) ?: return
+        if (document.header.major != 4 || document.header.minor < 1) return
+        val previous = entry.child("PreviousParentGroup") ?: XmlNode("PreviousParentGroup").also { node ->
+            // Where KeePass writes it: just before the entry's times.
+            val at = entry.children.indexOfFirst { it.name == "Times" }
+            if (at < 0) entry.children.add(node) else entry.children.add(at, node)
+        }
+        previous.text = Base64.getEncoder().encodeToString(from)
+    }
+
+    /** The recycle bin's UUID as [meta] names it, if the database has one. */
+    private fun named(meta: XmlNode): ByteArray? = meta.child("RecycleBinUUID")?.text?.let(::decodeUuid)
+        ?.takeIf { uuid -> uuid.size == 16 && uuid.any { it != 0.toByte() } }
+
     /** The recycle bin Meta names, or a new one in the root group, as KeePass creates it. */
     private fun recycleBin(meta: XmlNode, top: XmlNode, time: String): XmlNode {
-        val named = meta.child("RecycleBinUUID")?.text?.let(::decodeUuid)?.takeIf { uuid -> uuid.any { it != 0.toByte() } }
-        named?.let { uuid -> findGroup(top, uuid)?.let { return it } }
+        named(meta)?.let { uuid -> findGroup(top, uuid)?.let { return it } }
         val uuid = ByteArray(16).also(random::nextBytes)
         val bin = XmlNode("Group").apply {
             add("UUID", Base64.getEncoder().encodeToString(uuid))
@@ -483,6 +521,10 @@ internal class KdbxSaver(
     /** Deletes entry [uuid], into the recycle bin when the database uses one. */
     fun delete(current: ByteArray, key: KdbxKey, uuid: ByteArray): ByteArray =
         rewrite(current, key) { EntryEdits(random, now).delete(it, uuid) }
+
+    /** Moves entry [uuid] out of the recycle bin, back to the group it was deleted from. */
+    fun restore(current: ByteArray, key: KdbxKey, uuid: ByteArray): ByteArray =
+        rewrite(current, key) { EntryEdits(random, now).restore(it, uuid) }
 
     private fun rewrite(current: ByteArray, key: KdbxKey, edit: (KdbxDocument) -> Unit): ByteArray {
         val document = reader.decryptWithKey(ByteArrayInputStream(current), key) { header, payload ->

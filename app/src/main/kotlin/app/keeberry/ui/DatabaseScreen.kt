@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,6 +24,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.TextObfuscationMode
 import androidx.compose.foundation.verticalScroll
+import androidx.activity.compose.BackHandler
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
@@ -149,8 +151,11 @@ internal class BrowserState(
     val query: TextFieldState,
     /** The entry a save just stored, which the screen opens once. */
     val savedEntry: String?,
-    val deleting: Boolean,
-    val deleteError: Int?,
+    /** Whether an entry is being deleted or restored, and why the last attempt failed. */
+    val changing: Boolean,
+    val changeError: Int?,
+    /** Whether the recycle bin is shown in place of the entries. */
+    val showingBin: Boolean = false,
 )
 
 /**
@@ -176,19 +181,29 @@ internal fun DatabaseScreen(
     onSavedEntryShown: () -> Unit,
     onNewEntry: () -> Unit,
     onEditEntry: (Int) -> Unit,
-    onDeleteEntry: (Int) -> Unit,
-    onDismissDelete: () -> Unit,
+    onDeleteEntry: (position: Int, fromBin: Boolean) -> Unit,
+    onRestoreEntry: (Int) -> Unit,
+    onDismissChange: () -> Unit,
+    onShowBin: (Boolean) -> Unit,
     onSaveEntry: () -> Unit,
     onDiscardEntry: () -> Unit,
 ) {
-    // The list and the open entry keep their place while the entry form covers them.
+    // The list and the open entry keep their place while the entry form or the recycle bin covers them.
     val browserState = rememberSaveableStateHolder()
     if (browser != null) {
-        if (editor != null) EntryEditorScreen(editor, onSave = onSaveEntry, onDiscard = onDiscardEntry)
-        else browserState.SaveableStateProvider("browser") {
-            DatabaseBrowser(
-                browser, fileName, onBack, onLock, onSavedEntryShown, onNewEntry, onEditEntry, onDeleteEntry, onDismissDelete,
-            )
+        val actions = BrowserActions(
+            onBack, onLock, onSavedEntryShown, onNewEntry, onEditEntry, onDeleteEntry, onRestoreEntry, onDismissChange, onShowBin,
+        )
+        // The bin starts at its list each time it opens.
+        LaunchedEffect(browser.showingBin) { if (!browser.showingBin) browserState.removeState("bin") }
+        when {
+            editor != null -> EntryEditorScreen(editor, onSave = onSaveEntry, onDiscard = onDiscardEntry)
+            browser.showingBin -> browserState.SaveableStateProvider("bin") {
+                // Registered before the panes' own, so going back from an open entry still closes it first.
+                BackHandler { onShowBin(false) }
+                DatabaseBrowser(browser, fileName, actions, bin = true)
+            }
+            else -> browserState.SaveableStateProvider("browser") { DatabaseBrowser(browser, fileName, actions, bin = false) }
         }
         return
     }
@@ -224,25 +239,41 @@ private fun LockButton(onClick: () -> Unit) {
     TextButton(onClick, shapes = ButtonDefaults.shapes()) { Text(stringResource(R.string.database_lock)) }
 }
 
+@Composable
+private fun RecycleBinButton(onClick: () -> Unit) {
+    val label = stringResource(R.string.recycle_bin)
+    WithTooltip(label) {
+        IconButton(onClick, shapes = IconButtonDefaults.shapes(), modifier = Modifier.testTag(TestTags.RECYCLE_BIN)) {
+            Icon(painterResource(R.drawable.ic_delete), label)
+        }
+    }
+}
+
+/** What the entry list and the recycle bin can ask for. */
+private class BrowserActions(
+    val onBack: () -> Unit,
+    val onLock: () -> Unit,
+    val onSavedEntryShown: () -> Unit,
+    val onNewEntry: () -> Unit,
+    val onEditEntry: (Int) -> Unit,
+    val onDeleteEntry: (position: Int, fromBin: Boolean) -> Unit,
+    val onRestoreEntry: (Int) -> Unit,
+    val onDismissChange: () -> Unit,
+    val onShowBin: (Boolean) -> Unit,
+)
+
 /**
- * The entry list and the open entry: one pane at a time on phones, side by side on wider windows.
- * The open entry is the navigator's detail destination, which survives configuration changes, and
- * system back, predictive back included, returns from it to the list.
+ * The entry list and the open entry, or with [bin] the recycle bin's: one pane at a time on phones,
+ * side by side on wider windows. The open entry is the navigator's detail destination, which
+ * survives configuration changes, and system back, predictive back included, returns from it to the
+ * list. Entries in the bin can't be edited, only restored or deleted for good.
  */
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
-private fun DatabaseBrowser(
-    state: BrowserState,
-    fileName: String?,
-    onBack: () -> Unit,
-    onLock: () -> Unit,
-    onSavedEntryShown: () -> Unit,
-    onNewEntry: () -> Unit,
-    onEditEntry: (Int) -> Unit,
-    onDeleteEntry: (Int) -> Unit,
-    onDismissDelete: () -> Unit,
-) {
+private fun DatabaseBrowser(state: BrowserState, fileName: String?, actions: BrowserActions, bin: Boolean) {
     val database = state.database
+    val entries = if (bin) database.binned else database.entries
+    val onLock = actions.onLock
     // The scaffold moves focus into the pane it navigates to. That helps keyboard users, but by
     // touch it would focus the search field, which opens the search as soon as the list appears.
     val touch = LocalInputModeManager.current.inputMode == InputMode.Touch
@@ -271,47 +302,56 @@ private fun DatabaseBrowser(
     // Going back on a phone clears the destination at once, while the pane is still sliding away.
     var lastOpen by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(open) { if (open != null) lastOpen = open }
-    val positions = remember(database) {
-        database.entries.withIndex().associate { (position, entry) -> keyOf(entry, position) to position }
+    val positions = remember(entries) {
+        entries.withIndex().associate { (position, entry) -> keyOf(entry, position) to position }
     }
     // A saved entry opens once the list is back. Clearing it restarts this effect, so the navigation
     // runs in the screen's scope: in the effect's own, it would be cancelled mid-transition.
-    val saved = state.savedEntry
+    val saved = state.savedEntry.takeIf { !bin }
     LaunchedEffect(saved) {
         if (saved == null) return@LaunchedEffect
-        onSavedEntryShown()
+        actions.onSavedEntryShown()
         if (saved != open && saved in positions) {
             scope.launch { navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, saved) }
         }
     }
-    // A deleted entry closes, back to the list.
+    // A deleted or restored entry closes, back to the list.
     LaunchedEffect(positions) {
         if (open != null && open !in positions) navigator.navigateBack()
     }
-    val title = database.name.ifBlank { fileName ?: stringResource(R.string.open_database) }
+    val name = database.name.ifBlank { fileName ?: stringResource(R.string.open_database) }
+    val adds = state.canEdit && !bin
     NavigableListDetailPaneScaffold(
         navigator = navigator,
         listPane = {
             AnimatedPane {
                 Scaffold(
                     topBar = {
+                        val title = if (bin) stringResource(R.string.recycle_bin) else name
+                        // In the bin, the database it belongs to; elsewhere, whether it can be changed.
+                        val subtitle = if (bin) name else if (!state.canEdit) stringResource(R.string.database_read_only) else null
                         val heading = @Composable { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                        if (state.canEdit) {
-                            TopAppBar(title = heading, navigationIcon = { BackButton(onBack) }, actions = { LockButton(onLock) })
+                        val back = @Composable { BackButton(if (bin) { { actions.onShowBin(false) } } else actions.onBack) }
+                        val buttons: @Composable RowScope.() -> Unit = {
+                            if (!bin && database.showsRecycleBin) RecycleBinButton { actions.onShowBin(true) }
+                            LockButton(onLock)
+                        }
+                        if (subtitle == null) {
+                            TopAppBar(title = heading, navigationIcon = back, actions = buttons)
                         } else {
                             TopAppBar(
                                 title = heading,
-                                subtitle = { Text(stringResource(R.string.database_read_only)) },
-                                navigationIcon = { BackButton(onBack) },
-                                actions = { LockButton(onLock) },
+                                subtitle = { Text(subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                navigationIcon = back,
+                                actions = buttons,
                             )
                         }
                     },
                     floatingActionButton = {
-                        if (state.canEdit) {
+                        if (adds) {
                             val label = stringResource(R.string.entry_new)
                             ExtendedFloatingActionButton(
-                                onClick = onNewEntry,
+                                onClick = actions.onNewEntry,
                                 modifier = Modifier.testTag(TestTags.NEW_ENTRY),
                                 icon = { Icon(painterResource(R.drawable.ic_add), contentDescription = null) },
                                 text = { Text(label) },
@@ -320,19 +360,20 @@ private fun DatabaseBrowser(
                     },
                 ) { padding ->
                     EntryList(
-                        database,
-                        state.query,
+                        entries,
+                        empty = if (bin) R.string.recycle_bin_empty else R.string.database_empty,
+                        query = state.query,
                         // Beside the details, the list shows which entry they belong to.
                         selection = if (detailShown) Selection(open?.let(positions::get)) else null,
                         onOpen = { position ->
-                            val key = keyOf(database.entries[position], position)
+                            val key = keyOf(entries[position], position)
                             scope.launch { navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, key) }
                         },
                         // Beside the details, results drop down under the bar; alone, they fill the window.
                         docked = listShown && detailShown,
                         // Room for the last entry to scroll clear of the navigation bar, and of the
                         // new-entry button, which sits 16dp above it.
-                        bottomPadding = padding.calculateBottomPadding() + if (state.canEdit) 88.dp else 16.dp,
+                        bottomPadding = padding.calculateBottomPadding() + if (adds) 88.dp else 16.dp,
                         modifier = Modifier.padding(padding.withoutBottom()).consumeWindowInsets(padding).imePadding(),
                     )
                 }
@@ -342,32 +383,58 @@ private fun DatabaseBrowser(
             AnimatedPane {
                 val shown = open ?: lastOpen.takeIf { !detailShown }
                 val position = shown?.let(positions::get)
-                val entry = position?.let(database.entries::getOrNull)
+                val entry = position?.let(entries::getOrNull)
                 if (shown == null || position == null || entry == null) {
                     Placeholder(R.string.database_no_entry_open)
                 } else {
                     // Keyed so a newly opened entry starts with its hidden fields hidden.
                     key(shown) {
                         var confirmingDelete by rememberSaveable { mutableStateOf(false) }
+                        var confirmingRestore by rememberSaveable { mutableStateOf(false) }
                         val changeable = state.canEdit && entry.uuid != null
                         EntryDetails(
                             entry,
                             onBack = if (listShown) null else { { scope.launch { navigator.navigateBack() } } },
                             onLock = if (listShown) null else onLock,
-                            onEdit = if (changeable) { { onEditEntry(position) } } else null,
+                            onEdit = if (changeable && !bin) { { actions.onEditEntry(position) } } else null,
+                            onRestore = if (changeable && bin) { { confirmingRestore = true } } else null,
                             onDelete = if (changeable) { { confirmingDelete = true } } else null,
+                            deleteLabel = if (bin) R.string.entry_delete_forever_action else R.string.entry_delete_action,
                         )
+                        val title = titleOf(entry)
+                        val dismiss = {
+                            confirmingDelete = false
+                            confirmingRestore = false
+                            actions.onDismissChange()
+                        }
                         if (confirmingDelete) {
-                            DeleteDialog(
-                                titleOf(entry),
-                                database.recycleBin,
-                                deleting = state.deleting,
-                                error = state.deleteError,
-                                onConfirm = { onDeleteEntry(position) },
-                            ) {
-                                confirmingDelete = false
-                                onDismissDelete()
-                            }
+                            // From the bin, or with the bin turned off, an entry is deleted for good.
+                            val toBin = !bin && database.recycleBin
+                            ChangeDialog(
+                                title = R.string.entry_delete_title,
+                                message = stringResource(if (toBin) R.string.entry_delete_to_bin else R.string.entry_delete_for_good, title),
+                                confirm = R.string.entry_delete,
+                                progress = R.string.entry_deleting,
+                                confirmTag = TestTags.CONFIRM_DELETE,
+                                busy = state.changing,
+                                error = state.changeError,
+                                onConfirm = { actions.onDeleteEntry(position, bin) },
+                                onDismiss = dismiss,
+                            )
+                        }
+                        if (confirmingRestore) {
+                            ChangeDialog(
+                                title = R.string.entry_restore_title,
+                                message = if (entry.group.isEmpty()) stringResource(R.string.entry_restore_to_root, title)
+                                else stringResource(R.string.entry_restore_to_group, title, entry.group),
+                                confirm = R.string.entry_restore,
+                                progress = R.string.entry_restoring,
+                                confirmTag = TestTags.CONFIRM_RESTORE,
+                                busy = state.changing,
+                                error = state.changeError,
+                                onConfirm = { actions.onRestoreEntry(position) },
+                                onDismiss = dismiss,
+                            )
                         }
                     }
                 }
@@ -595,7 +662,8 @@ internal fun TaskProgress(progress: DatabaseViewModel.Progress, onCancel: () -> 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EntryList(
-    database: Database,
+    entries: List<DatabaseEntry>,
+    empty: Int,
     query: TextFieldState,
     selection: Selection?,
     onOpen: (Int) -> Unit,
@@ -603,8 +671,8 @@ private fun EntryList(
     bottomPadding: Dp,
     modifier: Modifier,
 ) {
-    if (database.entries.isEmpty()) {
-        Placeholder(R.string.database_empty, modifier)
+    if (entries.isEmpty()) {
+        Placeholder(empty, modifier)
         return
     }
     val search = rememberSearchBarState()
@@ -629,7 +697,7 @@ private fun EntryList(
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .onSizeChanged { barWidth = with(density) { it.width.toDp() } },
         )
-        EntryItems(database, database.entries.indices.toList(), selection, open, bottomPadding = bottomPadding)
+        EntryItems(entries, entries.indices.toList(), selection, open, bottomPadding = bottomPadding)
     }
     val field = @Composable { SearchField(query, search, Modifier.testTag(TestTags.SEARCH_INPUT)) }
     // Both open in a window of their own, which needs the screen's screenshot protection.
@@ -639,7 +707,7 @@ private fun EntryList(
             inputField = field,
             modifier = if (barWidth == Dp.Unspecified) Modifier else Modifier.width(barWidth),
             properties = PopupProperties(focusable = true, clippingEnabled = false, securePolicy = SecureFlagPolicy.SecureOn),
-        ) { SearchResults(query.text.toString(), database, selection, open, bottomInset = 0.dp) }
+        ) { SearchResults(query.text.toString(), entries, selection, open, bottomInset = 0.dp) }
     } else {
         ExpandedFullScreenSearchBar(
             state = search,
@@ -650,7 +718,7 @@ private fun EntryList(
         ) {
             // The keyboard's height when it's open, which includes the navigation bar.
             val inset = WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom).asPaddingValues().calculateBottomPadding()
-            SearchResults(query.text.toString(), database, selection, open, bottomInset = inset)
+            SearchResults(query.text.toString(), entries, selection, open, bottomInset = inset)
         }
     }
 }
@@ -688,26 +756,26 @@ private fun SearchField(query: TextFieldState, search: SearchBarState, modifier:
 @Composable
 private fun SearchResults(
     query: String,
-    database: Database,
+    entries: List<DatabaseEntry>,
     selection: Selection?,
     onOpen: (Int) -> Unit,
     bottomInset: Dp,
 ) {
-    val index = remember(database) { database.entries.map(::searchTextOf) }
+    val index = remember(entries) { entries.map(::searchTextOf) }
     val words = query.lowercase().split(' ').filter(String::isNotBlank)
     // Every word has to appear somewhere in the entry, in any order. Positions map to entries, so
     // results keep the database's order.
-    val visible = remember(database, words) {
-        database.entries.indices.filter { entry -> words.all { index[entry].contains(it) } }
+    val visible = remember(entries, words) {
+        entries.indices.filter { entry -> words.all { index[entry].contains(it) } }
     }
     // Centred in the space the keyboard leaves, not behind it.
     if (visible.isEmpty()) Placeholder(R.string.database_no_matches, Modifier.padding(bottom = bottomInset))
-    else EntryItems(database, visible, selection, onOpen, Modifier.testTag(TestTags.SEARCH_RESULTS), bottomInset + 16.dp)
+    else EntryItems(entries, visible, selection, onOpen, Modifier.testTag(TestTags.SEARCH_RESULTS), bottomInset + 16.dp)
 }
 
 @Composable
 private fun EntryItems(
-    database: Database,
+    entries: List<DatabaseEntry>,
     positions: List<Int>,
     selection: Selection?,
     onOpen: (Int) -> Unit,
@@ -720,7 +788,7 @@ private fun EntryItems(
         verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
     ) {
         itemsIndexed(positions, key = { _, position -> position }) { index, position ->
-            val entry = database.entries[position]
+            val entry = entries[position]
             val open = { onOpen(position) }
             val shapes = ListItemDefaults.segmentedShapes(index, positions.size)
             val supporting: (@Composable () -> Unit)? = if (entry.group.isEmpty()) null else {
@@ -762,7 +830,9 @@ private fun EntryDetails(
     onBack: (() -> Unit)?,
     onLock: (() -> Unit)?,
     onEdit: (() -> Unit)?,
+    onRestore: (() -> Unit)?,
     onDelete: (() -> Unit)?,
+    deleteLabel: Int,
 ) {
     // Standard fields first in the order KeePass shows them, then custom fields as stored.
     val fields = remember(entry) {
@@ -788,8 +858,16 @@ private fun EntryDetails(
                             }
                         }
                     }
+                    onRestore?.let {
+                        val restore = stringResource(R.string.entry_restore_action)
+                        WithTooltip(restore) {
+                            IconButton(it, shapes = IconButtonDefaults.shapes(), modifier = Modifier.testTag(TestTags.RESTORE_ENTRY)) {
+                                Icon(painterResource(R.drawable.ic_restore), restore)
+                            }
+                        }
+                    }
                     onDelete?.let {
-                        val delete = stringResource(R.string.entry_delete_action)
+                        val delete = stringResource(deleteLabel)
                         WithTooltip(delete) {
                             IconButton(it, shapes = IconButtonDefaults.shapes(), modifier = Modifier.testTag(TestTags.DELETE_ENTRY)) {
                                 Icon(painterResource(R.drawable.ic_delete), delete)
@@ -816,26 +894,29 @@ private fun EntryDetails(
 }
 
 /**
- * Confirms deleting an entry and stays open while it runs, showing why it failed if it does. Once
- * the entry is gone, the details close and the dialog with them.
+ * Confirms deleting or restoring an entry and stays open while it runs, showing why it failed if it
+ * does. Once the entry has left the list, the details close and the dialog with them.
  */
 @Composable
-private fun DeleteDialog(
-    title: String,
-    recycleBin: Boolean,
-    deleting: Boolean,
+private fun ChangeDialog(
+    title: Int,
+    message: String,
+    confirm: Int,
+    progress: Int,
+    confirmTag: String,
+    busy: Boolean,
     error: Int?,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
-        onDismissRequest = { if (!deleting) onDismiss() },
-        title = { Text(stringResource(R.string.entry_delete_title)) },
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text(stringResource(title)) },
         text = {
             Column {
-                Text(stringResource(if (recycleBin) R.string.entry_delete_to_bin else R.string.entry_delete_for_good, title))
-                if (deleting) {
-                    val status = stringResource(R.string.entry_deleting)
+                Text(message)
+                if (busy) {
+                    val status = stringResource(progress)
                     LinearWavyProgressIndicator(Modifier.fillMaxWidth().padding(top = 16.dp).semantics { contentDescription = status })
                 }
                 error?.let {
@@ -850,13 +931,13 @@ private fun DeleteDialog(
         confirmButton = {
             TextButton(
                 onConfirm,
-                enabled = !deleting,
+                enabled = !busy,
                 shapes = ButtonDefaults.shapes(),
-                modifier = Modifier.testTag(TestTags.CONFIRM_DELETE),
-            ) { Text(stringResource(if (deleting) R.string.entry_deleting else R.string.entry_delete)) }
+                modifier = Modifier.testTag(confirmTag),
+            ) { Text(stringResource(if (busy) progress else confirm)) }
         },
         dismissButton = {
-            TextButton(onDismiss, enabled = !deleting, shapes = ButtonDefaults.shapes()) { Text(stringResource(R.string.cancel)) }
+            TextButton(onDismiss, enabled = !busy, shapes = ButtonDefaults.shapes()) { Text(stringResource(R.string.cancel)) }
         },
         // A dialog has a window of its own, which needs the screen's screenshot protection.
         properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn),
@@ -967,13 +1048,19 @@ private fun previewUnlock(
     progress = progress,
 )
 
-private fun previewBrowser(entries: Boolean = true, canEdit: Boolean = true, savedEntry: String? = null) = BrowserState(
+private fun previewBrowser(
+    entries: Boolean = true,
+    canEdit: Boolean = true,
+    savedEntry: String? = null,
+    showingBin: Boolean = false,
+) = BrowserState(
     database = previewDatabase(entries),
     canEdit = canEdit,
     query = TextFieldState(),
     savedEntry = savedEntry,
-    deleting = false,
-    deleteError = null,
+    changing = false,
+    changeError = null,
+    showingBin = showingBin,
 )
 
 @Composable
@@ -996,8 +1083,10 @@ private fun DatabasePreview(unlock: UnlockState = previewUnlock(), browser: Brow
             onSavedEntryShown = {},
             onNewEntry = {},
             onEditEntry = {},
-            onDeleteEntry = {},
-            onDismissDelete = {},
+            onDeleteEntry = { _, _ -> },
+            onRestoreEntry = {},
+            onDismissChange = {},
+            onShowBin = {},
             onSaveEntry = {},
             onDiscardEntry = {},
         )
@@ -1028,6 +1117,10 @@ private fun EntryListPreview() = DatabasePreview(browser = previewBrowser())
 @Preview(name = "Read only", showSystemUi = true)
 @Composable
 private fun EntryListReadOnlyPreview() = DatabasePreview(browser = previewBrowser(canEdit = false))
+
+@Preview(name = "Recycle bin", showSystemUi = true)
+@Composable
+private fun RecycleBinPreview() = DatabasePreview(browser = previewBrowser(showingBin = true))
 
 @Preview(name = "No entries", showSystemUi = true)
 @Composable

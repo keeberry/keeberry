@@ -133,12 +133,40 @@ class KdbxReaderTest {
     }
 
     @Test
-    fun leavesOutEntriesInTheRecycleBin() {
+    fun keepsEntriesInTheRecycleBinApart() {
         // Created by keepassxc-cli: "Deleted entry" was removed, and the "Old" group with "Old entry" in it.
         open("recycle-bin.kdbx").use { database ->
             assertEquals(listOf("Live entry", "Work entry"), database.entries.map { it.title }.sorted())
             assertEquals("work-user", database.entries.single { it.title == "Work entry" }.field("UserName").text())
             assertTrue(database.entries.none { it.group.contains("Recycle Bin") })
+            assertEquals(listOf("Deleted entry", "Old entry"), database.binned.map { it.title }.sorted())
+            // KeePassXC noted that both came from the root group, the entry in "Old" by way of its group.
+            assertEquals(listOf("Passwords", "Passwords"), database.binned.map { it.group })
+            assertTrue(database.binned.all { it.uuid != null })
+        }
+    }
+
+    @Test
+    fun namesTheGroupARestorePutsABinnedEntryIn() {
+        fun uuid(id: Int) = Base64.getEncoder().encodeToString(ByteArray(16) { id.toByte() })
+        fun entry(title: String, previous: Int?) = "<Entry><UUID>${uuid(title.length + 40)}</UUID>" +
+            (previous?.let { "<PreviousParentGroup>${uuid(it)}</PreviousParentGroup>" } ?: "") +
+            "<String><Key>Title</Key><Value>$title</Value></String></Entry>"
+        val xml = "<KeePassFile><Meta><RecycleBinUUID>${uuid(3)}</RecycleBinUUID></Meta><Root>" +
+            "<Group><UUID>${uuid(1)}</UUID><Name>Root</Name>" +
+            "<Group><UUID>${uuid(2)}</UUID><Name>Work</Name></Group>" +
+            "<Group><UUID>${uuid(3)}</UUID><Name>Recycle Bin</Name>" +
+            entry("From work", 2) + entry("Unknown origin", null) + entry("Gone group", 9) +
+            "<Group><UUID>${uuid(4)}</UUID><Name>Old</Name>" + entry("From the bin", 4) + "</Group>" +
+            "</Group></Group></Root></KeePassFile>"
+        readDatabaseXml(xml.byteInputStream(), null, null).use { database ->
+            assertEquals(emptyList<String>(), database.entries.map { it.title })
+            // A group that is gone or in the bin itself leaves the root group.
+            assertEquals(
+                mapOf("From work" to "Root / Work", "Unknown origin" to "Root", "Gone group" to "Root", "From the bin" to "Root"),
+                database.binned.associate { it.title to it.group },
+            )
+            assertEquals(listOf("Root", "Root / Work"), database.groups.map { it.path })
         }
     }
 

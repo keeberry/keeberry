@@ -79,10 +79,12 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
         private set
     /** The entry a save just stored, which the screen opens once and then clears. */
     var savedEntry by mutableStateOf<String?>(null)
-    /** Whether an entry is being deleted, and why the last delete failed. */
-    var deleting by mutableStateOf(false)
+    /** Whether the recycle bin is shown in place of the entries. */
+    var showingBin by mutableStateOf(false)
+    /** Whether an entry is being deleted or restored, and why the last attempt failed. */
+    var changing by mutableStateOf(false)
         private set
-    var deleteError by mutableStateOf<Int?>(null)
+    var changeError by mutableStateOf<Int?>(null)
 
     val canEdit: Boolean get() = database?.editable == true && writable
 
@@ -303,37 +305,66 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
     }
 
     /**
-     * Deletes the entry at [position], into the recycle bin when the database uses one. Like a save,
-     * it reads the file again, checks the result and then replaces the file.
+     * Deletes the entry at [position] in the list, into the recycle bin when the database uses one, or
+     * the one at [position] in the recycle bin when [fromBin], for good. Like a save, it reads the file
+     * again, checks the result and then replaces the file.
      */
-    fun deleteEntry(position: Int) {
+    fun deleteEntry(position: Int, fromBin: Boolean = false) =
+        changeEntry(position, fromBin, R.string.entry_save_missing_error, KdbxSaver::delete) { reopened, uuid ->
+            reopened.entries.none { it.uuid.contentEquals(uuid) } && (!fromBin || reopened.binned.none { it.uuid.contentEquals(uuid) })
+        }
+
+    /** Moves the entry at [position] in the recycle bin back to its group, checked like a delete. */
+    fun restoreEntry(position: Int) =
+        changeEntry(position, fromBin = true, R.string.entry_restore_missing_error, KdbxSaver::restore) { reopened, uuid ->
+            reopened.entries.any { it.uuid.contentEquals(uuid) } && reopened.binned.none { it.uuid.contentEquals(uuid) }
+        }
+
+    /**
+     * Applies [change] to the entry at [position], in the recycle bin when [fromBin], and replaces the
+     * file once [changed] confirms the result. [missing] explains an entry that is no longer there.
+     */
+    private fun changeEntry(
+        position: Int,
+        fromBin: Boolean,
+        missing: Int,
+        change: KdbxSaver.(ByteArray, KdbxKey, ByteArray) -> ByteArray,
+        changed: (Database, ByteArray) -> Boolean,
+    ) {
         val database = database ?: return
         val uri = databaseUri ?: return
         if (!canEdit || editor != null || saveJob != null) return
-        val uuid = database.entries.getOrNull(position)?.uuid?.copyOf() ?: return
+        val entries = if (fromBin) database.binned else database.entries
+        val uuid = entries.getOrNull(position)?.uuid?.copyOf() ?: return
         val key = database.key?.copy() ?: return
-        deleting = true
-        deleteError = null
+        changing = true
+        changeError = null
         saveJob = viewModelScope.launch {
             val result = onWorker {
                 try {
-                    deleteOnWorker(uri, key, uuid)
+                    changeOnWorker(uri, key, uuid, change, changed)
                 } finally {
                     key.close()
                 }
             }
             saveJob = null
-            finishDelete(database, result)
+            finishChange(database, result, missing)
         }
     }
 
-    private fun deleteOnWorker(uri: Uri, key: KdbxKey, uuid: ByteArray): Database {
+    private fun changeOnWorker(
+        uri: Uri,
+        key: KdbxKey,
+        uuid: ByteArray,
+        change: KdbxSaver.(ByteArray, KdbxKey, ByteArray) -> ByteArray,
+        changed: (Database, ByteArray) -> Boolean,
+    ): Database {
         val saver = KdbxSaver()
         val current = readFile(uri)
-        val bytes = saver.delete(current, key, uuid)
+        val bytes = saver.change(current, key, uuid)
         val reopened = saver.open(bytes, key)
         try {
-            if (reopened.entries.any { it.uuid.contentEquals(uuid) }) throw KdbxException(KdbxFailure.CORRUPT)
+            if (!changed(reopened, uuid)) throw KdbxException(KdbxFailure.CORRUPT)
             replaceFile(uri, bytes, current)
             return reopened
         } catch (error: Throwable) {
@@ -342,20 +373,20 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
         }
     }
 
-    private fun finishDelete(previous: Database, result: Result<Database>) {
-        deleting = false
-        val deleted = result.getOrNull()
-        // Locked while deleting: the file is saved, but nothing is shown any more.
+    private fun finishChange(previous: Database, result: Result<Database>, missing: Int) {
+        changing = false
+        val changed = result.getOrNull()
+        // Locked while saving: the file is saved, but nothing is shown any more.
         if (database !== previous) {
-            deleted?.close()
+            changed?.close()
             return
         }
-        if (deleted == null) {
-            deleteError = saveErrorMessage(result.exceptionOrNull())
+        if (changed == null) {
+            changeError = saveErrorMessage(result.exceptionOrNull(), missing)
             return
         }
         previous.close()
-        database = deleted
+        database = changed
     }
 
     /** Writes [bytes] over the file and reads it back. If that fails, puts [original] back. */
@@ -423,10 +454,10 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
         savedEntry = saved.uuid.hexString()
     }
 
-    private fun saveErrorMessage(error: Throwable?): Int = when (error) {
+    private fun saveErrorMessage(error: Throwable?, missing: Int = R.string.entry_save_missing_error): Int = when (error) {
         is SaveException -> error.messageId
         is SecurityException -> R.string.entry_save_permission_error
-        is EntryMissingException -> R.string.entry_save_missing_error
+        is EntryMissingException -> missing
         is GroupMissingException -> R.string.entry_save_group_error
         is KdbxException -> when (error.failure) {
             KdbxFailure.CREDENTIALS -> R.string.entry_save_credentials_error
@@ -453,7 +484,8 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
         editor?.clear()
         editor = null
         savedEntry = null
-        deleteError = null
+        showingBin = false
+        changeError = null
         database?.close()
         database = null
         query.clearText()

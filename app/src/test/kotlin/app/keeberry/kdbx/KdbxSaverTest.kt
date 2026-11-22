@@ -268,8 +268,104 @@ class KdbxSaverTest {
         }
     }
 
-    /** Adds a group named Banking inside the root group. */
-    private fun withSubgroup(original: ByteArray): ByteArray = open("modern-argon2id.kdbx").use { database ->
+    @Test
+    fun restoresAnEntryToTheGroupItWasDeletedFrom() {
+        val original = bytes("recycle-bin.kdbx")
+        open("recycle-bin.kdbx").use { database ->
+            val work = database.entries.single { it.title == "Work entry" }
+            val deleted = saver.delete(original, database.key!!, work.uuid!!)
+            saver.open(deleted, database.key).use { binned ->
+                assertEquals("Passwords / Work", binned.binned.single { it.title == "Work entry" }.group)
+            }
+            val before = document(deleted, database.key)
+            val binUuid = decodeBase64(before.root.child("Meta")!!.child("RecycleBinUUID")!!.text!!)
+            before.clear()
+            val restored = saver.restore(deleted, database.key, work.uuid)
+            saver.open(restored, database.key).use { reopened ->
+                val entry = reopened.entries.single { it.uuid.contentEquals(work.uuid) }
+                assertEquals("Passwords / Work", entry.group)
+                assertEquals("work-user", entry.field("UserName").text())
+                assertTrue(reopened.binned.none { it.uuid.contentEquals(work.uuid) })
+                assertEquals(database.binned.size, reopened.binned.size)
+            }
+            // As KeePass moves entries, the restored one notes it came from the bin.
+            val document = document(restored, database.key)
+            val node = entries(document.root).single { decodeBase64(it.child("UUID")!!.text!!).contentEquals(work.uuid) }
+            assertArrayEquals(binUuid, decodeBase64(node.child("PreviousParentGroup")!!.text!!))
+            assertEquals(kdbxTime(1_700_000_000_000L), node.child("Times")!!.child("LocationChanged")!!.text)
+            document.clear()
+        }
+    }
+
+    @Test
+    fun restoresAnEntryOfADeletedGroupToTheRootGroup() {
+        val original = bytes("recycle-bin.kdbx")
+        open("recycle-bin.kdbx").use { database ->
+            val old = database.binned.single { it.title == "Old entry" }
+            val restored = saver.restore(original, database.key!!, old.uuid!!)
+            saver.open(restored, database.key).use { reopened ->
+                assertEquals("Passwords", reopened.entries.single { it.uuid.contentEquals(old.uuid) }.group)
+                assertEquals(listOf("Deleted entry"), reopened.binned.map { it.title })
+                // The deleted group stays in the bin.
+                assertEquals(database.groups.map { it.path }, reopened.groups.map { it.path })
+            }
+        }
+    }
+
+    @Test
+    fun restoringAnEntryOutsideTheBinReportsItMissing() {
+        val original = bytes("recycle-bin.kdbx")
+        open("recycle-bin.kdbx").use { database ->
+            val live = database.entries.single { it.title == "Live entry" }
+            assertThrows(EntryMissingException::class.java) { saver.restore(original, database.key!!, live.uuid!!) }
+        }
+        open("modern-argon2id.kdbx").use { database ->
+            // No recycle bin at all.
+            assertThrows(EntryMissingException::class.java) {
+                saver.restore(bytes("modern-argon2id.kdbx"), database.key!!, database.entries.first().uuid!!)
+            }
+        }
+    }
+
+    @Test
+    fun kdbx40RestoresToTheRootGroupWithoutRecordingWhere() {
+        val original = withSubgroup(bytes("modern-aes-kdf.kdbx"), "modern-aes-kdf.kdbx")
+        reader.open(original.inputStream(), password()).use { database ->
+            assertEquals(0, header(original).minor)
+            val banking = database.groups.single { it.depth == 1 }
+            val added = saver.save(original, database.key!!, null, fields("Bank", "me", "pin"), banking.uuid)
+            val deleted = saver.delete(added.bytes, database.key, added.uuid)
+            val document = document(deleted, database.key)
+            // PreviousParentGroup is new in KDBX 4.1, so a 4.0 file doesn't get it.
+            assertTrue(entries(document.root).none { it.child("PreviousParentGroup") != null })
+            document.clear()
+            val restored = saver.restore(deleted, database.key, added.uuid)
+            saver.open(restored, database.key).use { reopened ->
+                assertEquals("Fixture group", reopened.entries.single { it.uuid.contentEquals(added.uuid) }.group)
+                assertTrue(reopened.binned.isEmpty())
+            }
+        }
+    }
+
+    @Test
+    fun deletingFromTheBinDeletesForGood() {
+        val original = bytes("recycle-bin.kdbx")
+        open("recycle-bin.kdbx").use { database ->
+            val binned = database.binned.single { it.title == "Deleted entry" }
+            val deleted = saver.delete(original, database.key!!, binned.uuid!!)
+            saver.open(deleted, database.key).use { reopened ->
+                assertEquals(listOf("Old entry"), reopened.binned.map { it.title })
+                assertEquals(database.entries.size, reopened.entries.size)
+            }
+            val document = document(deleted, database.key)
+            val record = document.root.child("Root")!!.child("DeletedObjects")!!.childrenNamed("DeletedObject").last()
+            assertArrayEquals(binned.uuid, decodeBase64(record.child("UUID")!!.text!!))
+            document.clear()
+        }
+    }
+
+    /** Adds a group named Banking inside the root group of [file]. */
+    private fun withSubgroup(original: ByteArray, file: String = "modern-argon2id.kdbx"): ByteArray = open(file).use { database ->
         rewrite(original, database.key!!) { document ->
             val top = document.root.child("Root")!!.child("Group")!!
             top.add("Group").apply {
