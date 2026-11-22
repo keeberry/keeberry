@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "keyberry"
+rootProject.name = "keeberry"
 include(":app")

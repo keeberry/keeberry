@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Keyberry keeps only the recent database list, whose document access can't move to another device. -->
+<!-- KeeBerry keeps only the recent database list, whose document access can't move to another device. -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="root" />

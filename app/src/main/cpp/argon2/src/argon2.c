@@ -89,7 +89,7 @@ int argon2_ctx(argon2_context *context, argon2_type type) {
     result = fill_memory_blocks(&instance);
 
     if (ARGON2_OK != result) {
-        /* Keyberry: upstream leaks the memory on this path, which an aborted
+        /* KeeBerry: upstream leaks the memory on this path, which an aborted
          * run now takes, so wipe and free it as finalize() would */
         free_memory(context, (uint8_t *)instance.memory,
                     instance.memory_blocks, sizeof(block));
@@ -151,7 +151,7 @@ int argon2_hash(const uint32_t t_cost, const uint32_t m_cost,
     context.free_cbk = NULL;
     context.flags = ARGON2_DEFAULT_FLAGS;
     context.version = version;
-    context.abort_cbk = NULL; /* Keyberry */
+    context.abort_cbk = NULL; /* KeeBerry */
     context.abort_data = NULL;
 
     result = argon2_ctx(&context, type);
@@ -445,7 +445,7 @@ const char *argon2_error_message(int error_code) {
         return "Some of encoded parameters are too long or too short";
     case ARGON2_VERIFY_MISMATCH:
         return "The password does not match the supplied hash";
-    case ARGON2_ABORTED: /* Keyberry */
+    case ARGON2_ABORTED: /* KeeBerry */
         return "Stopped by the abort callback";
     default:
         return "Unknown error code";

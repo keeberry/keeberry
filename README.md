@@ -1,21 +1,21 @@
-# <img src="design/logo/keyberry-icon.svg" width="40" height="40" alt="KeyBerry logo"/> KeyBerry
+# <img src="design/logo/keeberry-icon.svg" width="40" height="40" alt="KeeBerry logo"/> KeeBerry
 
 [![CI](https://github.com/keyberryapp/keyberry/actions/workflows/ci.yml/badge.svg)](https://github.com/keyberryapp/keyberry/actions/workflows/ci.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 ![Android 9+](https://img.shields.io/badge/Android-9%2B-3ddc84.svg)
 
-KeyBerry is a lightweight, offline password manager for Android that opens KeePass (KDBX) databases.
+KeeBerry is a lightweight, offline password manager for Android that opens KeePass (KDBX) databases.
 It stores your usernames, passwords, URLs, notes and custom fields in one encrypted file that you
 keep wherever you like, on your phone, a USB drive or any cloud storage that Android's file picker
-can reach. KeyBerry never talks to the internet: the app doesn't even request network access.
+can reach. KeeBerry never talks to the internet: the app doesn't even request network access.
 
-KeyBerry can unlock databases with a YubiKey over NFC or USB, using the same challenge-response
-scheme as KeePassXC, so one database and one key work on your desktop and your phone.
+KeeBerry can unlock databases with a YubiKey over NFC or USB, using HMAC-SHA1 challenge-response,
+so one database and one key work on your desktop and your phone.
 
 ## Quick start
 
-KeyBerry is in early development and there are no prebuilt releases yet. To try it, build it from
-source as described in [Building KeyBerry](#building-keyberry) and install the APK on a device
+KeeBerry is in early development and there are no prebuilt releases yet. To try it, build it from
+source as described in [Building KeeBerry](#building-keeberry) and install the APK on a device
 running Android 9 or later.
 
 1. Tap **Open database** and choose a `.kdbx` file, or tap **Create database** to start a new one.
@@ -26,7 +26,7 @@ running Android 9 or later.
 
 ### Core features
 
-- Opens KeePass databases in KDBX 3 and KDBX 4 format, compatible with KeePassXC and KeePass
+- Opens KeePass databases in KDBX 3 and KDBX 4 format
 - Creates new KDBX 4 databases protected by a master password
 - Unlocks with a master password, a key file, a YubiKey, or any combination of them
 - YubiKey HMAC-SHA1 challenge-response on slot 1 or slot 2, over NFC or USB
@@ -39,7 +39,7 @@ running Android 9 or later.
 
 ### Security
 
-- No internet permission: your database never leaves your device through KeyBerry
+- No internet permission: your database never leaves your device through KeeBerry
 - Encryption: AES-256, ChaCha20 and Twofish
 - Key derivation: Argon2id, Argon2d and AES-KDF, run in native code (AES-KDF uses the CPU's AES
   instructions)
@@ -48,7 +48,7 @@ running Android 9 or later.
 - Android backups are turned off, so app data isn't copied to the cloud
 - Every save is read back to check it, and the original file is restored if anything went wrong
 
-## Building KeyBerry
+## Building KeeBerry
 
 You need:
 
@@ -80,7 +80,7 @@ connected device:
 ./gradlew connectedDebugAndroidTest
 ```
 
-KeyBerry builds for 64-bit devices only (`arm64-v8a` and `x86_64`). Lint treats every warning as an
+KeeBerry builds for 64-bit devices only (`arm64-v8a` and `x86_64`). Lint treats every warning as an
 error, so fix new warnings before opening a pull request.
 
 ## Contributing
@@ -98,11 +98,11 @@ instead, and include the steps to reproduce the problem.
 
 ## License
 
-KeyBerry is licensed under the [GNU General Public License v3.0](LICENSE).
+KeeBerry is licensed under the [GNU General Public License v3.0](LICENSE).
 
 It includes the [Argon2 reference implementation](app/src/main/cpp/argon2), used under CC0 1.0 or
 Apache 2.0, and depends on [Bouncy Castle](https://www.bouncycastle.org/) (MIT license),
 [Yubico YubiKit](https://github.com/Yubico/yubikit-android) and Android Jetpack (Apache 2.0).
 
-KeyBerry is an independent project and isn't affiliated with KeePass, KeePassXC or Yubico.
+KeeBerry is an independent project and isn't affiliated with KeePass or Yubico.
 YubiKey is a trademark of Yubico AB.

@@ -45,7 +45,7 @@ static void wipe_and_free(uint8_t *bytes, uint32_t length) {
 /* Writes the 32-byte Argon2 output to `output` and returns an argon2.h error code. The caller has
  * already checked the parameters against the KDBX rules and the app's memory budget. */
 JNIEXPORT jint JNICALL
-Java_app_keyberry_kdbx_Argon2Jni_hash(JNIEnv *env, jclass clazz, jint type, jint version,
+Java_app_keeberry_kdbx_Argon2Jni_hash(JNIEnv *env, jclass clazz, jint type, jint version,
                                       jint passes, jint memory_kib, jint lanes, jbyteArray password,
                                       jbyteArray salt, jbyteArray secret, jbyteArray additional,
                                       jbyteArray output, jobject cancel) {

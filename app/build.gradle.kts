@@ -4,13 +4,13 @@ plugins {
 }
 
 android {
-    namespace = "app.keyberry"
+    namespace = "app.keeberry"
     compileSdk = 37
     // NDK r28 and later align native libraries to 16 KB pages by default.
     ndkVersion = libs.versions.ndk.get()
 
     defaultConfig {
-        applicationId = "app.keyberry"
+        applicationId = "app.keeberry"
         minSdk = 28
         targetSdk = 37
         versionCode = 1

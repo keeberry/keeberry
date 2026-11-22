@@ -156,14 +156,14 @@ typedef enum Argon2_ErrorCodes {
 
     ARGON2_VERIFY_MISMATCH = -35,
 
-    ARGON2_ABORTED = -36 /* Keyberry: abort_cbk asked to stop */
+    ARGON2_ABORTED = -36 /* KeeBerry: abort_cbk asked to stop */
 } argon2_error_codes;
 
 /* Memory allocator types --- for external allocation */
 typedef int (*allocate_fptr)(uint8_t **memory, size_t bytes_to_allocate);
 typedef void (*deallocate_fptr)(uint8_t *memory, size_t bytes_to_allocate);
 
-/* Keyberry: returns nonzero to stop the run */
+/* KeeBerry: returns nonzero to stop the run */
 typedef int (*abort_fptr)(void *data);
 
 /* Argon2 external data structures */
@@ -221,7 +221,7 @@ typedef struct Argon2_Context {
 
     uint32_t flags; /* array of bool options */
 
-    /* Keyberry: optional. Called on the calling thread after every slice, so a
+    /* KeeBerry: optional. Called on the calling thread after every slice, so a
      * long run can stop early and fail with ARGON2_ABORTED. */
     abort_fptr abort_cbk;
     void *abort_data;

@@ -256,7 +256,7 @@ uint32_t index_alpha(const argon2_instance_t *instance,
     return absolute_position;
 }
 
-/* Keyberry: asks the caller whether to stop, between slices */
+/* KeeBerry: asks the caller whether to stop, between slices */
 static int abort_requested(const argon2_instance_t *instance) {
     const argon2_context *context = instance->context_ptr;
     return context->abort_cbk != NULL &&
@@ -273,7 +273,7 @@ static int fill_memory_blocks_st(argon2_instance_t *instance) {
                 argon2_position_t position = {r, l, (uint8_t)s, 0};
                 fill_segment(instance, position);
             }
-            if (abort_requested(instance)) { /* Keyberry */
+            if (abort_requested(instance)) { /* KeeBerry */
                 return ARGON2_ABORTED;
             }
         }
@@ -365,7 +365,7 @@ static int fill_memory_blocks_mt(argon2_instance_t *instance) {
                 }
             }
 
-            /* Keyberry: every lane thread has been joined, so it is safe to stop */
+            /* KeeBerry: every lane thread has been joined, so it is safe to stop */
             if (abort_requested(instance)) {
                 rc = ARGON2_ABORTED;
                 goto fail;

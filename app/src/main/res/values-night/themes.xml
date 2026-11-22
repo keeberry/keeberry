@@ -1,6 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Keyberry" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">@color/surface</item>
-    </style>
+    <style name="Base.Theme.KeeBerry" parent="android:Theme.Material.NoActionBar" />
 </resources>

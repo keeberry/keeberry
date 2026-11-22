@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The same role colors Compose's dynamic color scheme reads on Android 14 and later. -->
+    <color name="dynamic_surface">@android:color/system_surface_light</color>
+    <color name="dynamic_primary">@android:color/system_primary_light</color>
+</resources>

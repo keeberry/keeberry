@@ -3,12 +3,12 @@
 
     <application>
         <!-- Debug builds only: serves the KDBX fixtures that UI tests copy into the cache as
-             content:// documents, the only kind the app opens. Not exported, so only Keyberry itself
+             content:// documents, the only kind the app opens. Not exported, so only KeeBerry itself
              can read them. Living in the app rather than the test APK, it runs in the app's own
              process. -->
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="app.keyberry.fixtures"
+            android:authorities="app.keeberry.fixtures"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data

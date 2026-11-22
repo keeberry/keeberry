@@ -351,7 +351,7 @@ int decode_string(argon2_context *ctx, const char *str, argon2_type type) {
     ctx->allocate_cbk = NULL;
     ctx->free_cbk = NULL;
     ctx->flags = ARGON2_DEFAULT_FLAGS;
-    ctx->abort_cbk = NULL; /* Keyberry */
+    ctx->abort_cbk = NULL; /* KeeBerry */
     ctx->abort_data = NULL;
 
     /* On return, must have valid context */

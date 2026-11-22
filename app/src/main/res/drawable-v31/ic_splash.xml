@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The splash screen logo in the Material You primary color. Scaled like the launcher foreground
+     so the crown and berry stay inside the splash icon's circular mask. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group android:pivotX="54" android:pivotY="54" android:scaleX="0.8" android:scaleY="0.8">
+        <path
+            android:fillColor="@color/dynamic_primary"
+            android:fillType="evenOdd"
+            android:pathData="M43.79,31.93L44.49,24.59Q44.6,23.4 45.54,24.15L49.45,27.26Q50,27.7 50.37,27.1L53.37,22.22Q54,21.2 54.63,22.22L57.63,27.1Q58,27.7 58.55,27.26L62.46,24.15Q63.4,23.4 63.51,24.59L64.21,31.93A28,28 0 1 1 43.79,31.93ZM50.8,57.83A8,8 0 1 1 57.2,57.83L59.56,73.42Q59.8,75 58.2,75L49.8,75Q48.2,75 48.44,73.42Z" />
+    </group>
+</vector>

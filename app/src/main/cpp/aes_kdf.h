@@ -1,5 +1,5 @@
-#ifndef KEYBERRY_AES_KDF_H
-#define KEYBERRY_AES_KDF_H
+#ifndef KEEBERRY_AES_KDF_H
+#define KEEBERRY_AES_KDF_H
 
 #include <stdint.h>
 

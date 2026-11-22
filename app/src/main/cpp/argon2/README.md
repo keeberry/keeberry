@@ -13,7 +13,7 @@ their headers. `opt.c`, which uses x86 SIMD, is left out, so every ABI builds th
 
 ## Local changes
 
-Every change is marked with a `Keyberry` comment, so `grep -rn Keyberry .` lists them all.
+Every change is marked with a `KeeBerry` comment, so `grep -rn KeeBerry .` lists them all.
 
 - `argon2.h` adds an optional `abort_cbk` and `abort_data` to `argon2_context`, and the
   `ARGON2_ABORTED` error code. `argon2.c` and `encoding.c` set the new fields to `NULL` wherever

@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Only the window: Compose draws everything else with KeyberryTheme. -->
-    <style name="Theme.Keyberry" parent="android:Theme.Material.Light.NoActionBar">
+    <!-- Only the window: Compose draws everything else with KeeBerryTheme. values-night swaps the
+         parent for the dark one, and values-v31 adds the Material You splash screen. -->
+    <style name="Base.Theme.KeeBerry" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <style name="Theme.KeeBerry" parent="Base.Theme.KeeBerry">
         <item name="android:windowBackground">@color/surface</item>
     </style>
 </resources>

@@ -47,7 +47,7 @@ static void expand_key(const uint8_t key[32], uint8_t round_keys[AES_KDF_ROUND_K
 }
 
 JNIEXPORT jboolean JNICALL
-Java_app_keyberry_kdbx_AesKdfJni_supported(JNIEnv *env, jclass clazz) {
+Java_app_keeberry_kdbx_AesKdfJni_supported(JNIEnv *env, jclass clazz) {
     (void)env;
     (void)clazz;
     return aes_kdf_cpu_supported() ? JNI_TRUE : JNI_FALSE;
@@ -55,7 +55,7 @@ Java_app_keyberry_kdbx_AesKdfJni_supported(JNIEnv *env, jclass clazz) {
 
 /* Applies `rounds` AES-KDF rounds to the 32-byte `key` in place under the 32-byte `seed`. */
 JNIEXPORT jboolean JNICALL
-Java_app_keyberry_kdbx_AesKdfJni_transform(JNIEnv *env, jclass clazz, jbyteArray seed, jbyteArray key,
+Java_app_keeberry_kdbx_AesKdfJni_transform(JNIEnv *env, jclass clazz, jbyteArray seed, jbyteArray key,
                                            jint rounds) {
     (void)clazz;
     if (seed == NULL || key == NULL || rounds < 0 || !aes_kdf_cpu_supported() ||

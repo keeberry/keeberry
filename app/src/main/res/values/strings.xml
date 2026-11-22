@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">KeyBerry</string>
+    <string name="app_name">KeeBerry</string>
     <string name="open_database">Open database</string>
     <string name="checking_file">Checking file…</string>
     <string name="file_picker_unavailable">Android’s file picker is unavailable on this device.</string>
@@ -33,7 +33,7 @@
     <string name="database_corrupt_error">This database is damaged or incomplete.</string>
     <string name="database_unsupported_error">This database uses an unsupported KDBX version or encryption setting.</string>
     <string name="database_key_file_error">The selected key file is unreadable or invalid.</string>
-    <string name="database_limit_error">This database exceeds KeyBerry’s file or key derivation limits.</string>
+    <string name="database_limit_error">This database exceeds KeeBerry’s file or key derivation limits.</string>
     <string name="database_read_only">Read only</string>
     <string name="database_lock">Lock</string>
     <string name="database_back">Back</string>
@@ -50,7 +50,7 @@
     <string name="database_memory_error">Not enough free memory to unlock this database right now. Close other apps and try again.</string>
     <string name="recent_databases">Recent databases</string>
     <string name="recent_remove_title">Remove from recent databases?</string>
-    <string name="recent_remove_message">KeyBerry will forget %1$s. The file itself isn’t changed.</string>
+    <string name="recent_remove_message">KeeBerry will forget %1$s. The file itself isn’t changed.</string>
     <string name="recent_remove">Remove</string>
     <string name="cancel">Cancel</string>
     <string name="database_key_file_chosen">Key file: %1$s</string>
@@ -83,7 +83,7 @@
     <string name="entry_field_name_required">Every field needs a name.</string>
     <string name="entry_field_name_taken">Each field needs a different name, other than Title, UserName, Password, URL and Notes.</string>
     <string name="entry_save_error">Couldn’t save the database. The file was left as it was.</string>
-    <string name="entry_save_permission_error">KeyBerry can only read this file. Open it again with Open database to allow changes.</string>
+    <string name="entry_save_permission_error">KeeBerry can only read this file. Open it again with Open database to allow changes.</string>
     <string name="entry_save_credentials_error">The database’s credentials were changed elsewhere. Lock it and unlock it again to save changes.</string>
     <string name="entry_save_missing_error">This entry was deleted elsewhere. Lock the database and unlock it again to see its current entries.</string>
     <string name="entry_save_limit_error">This database is too large to save on this device.</string>

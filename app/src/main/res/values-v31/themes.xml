@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material You: the window and splash screen take the wallpaper-based surface, and the logo
+         its primary color, matching what KeeBerryTheme draws once Compose takes over. -->
+    <style name="Theme.KeeBerry" parent="Base.Theme.KeeBerry">
+        <item name="android:windowBackground">@color/dynamic_surface</item>
+        <item name="android:windowSplashScreenBackground">@color/dynamic_surface</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash</item>
+    </style>
+</resources>

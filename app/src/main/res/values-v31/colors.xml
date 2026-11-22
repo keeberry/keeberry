@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12 and 13 have no surface role color, so these are the closest tonal palette
+         entries to Compose's dynamic surface (neutral 98) and primary (accent 40). -->
+    <color name="dynamic_surface">@android:color/system_neutral1_10</color>
+    <color name="dynamic_primary">@android:color/system_accent1_600</color>
+</resources>
