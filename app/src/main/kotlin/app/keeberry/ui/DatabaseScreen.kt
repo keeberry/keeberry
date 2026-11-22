@@ -274,12 +274,15 @@ private fun DatabaseBrowser(
     val positions = remember(database) {
         database.entries.withIndex().associate { (position, entry) -> keyOf(entry, position) to position }
     }
-    // A saved entry opens once the list is back.
+    // A saved entry opens once the list is back. Clearing it restarts this effect, so the navigation
+    // runs in the screen's scope: in the effect's own, it would be cancelled mid-transition.
     val saved = state.savedEntry
     LaunchedEffect(saved) {
         if (saved == null) return@LaunchedEffect
         onSavedEntryShown()
-        if (saved != open && saved in positions) navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, saved)
+        if (saved != open && saved in positions) {
+            scope.launch { navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, saved) }
+        }
     }
     // A deleted entry closes, back to the list.
     LaunchedEffect(positions) {
