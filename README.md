@@ -31,8 +31,10 @@ running Android 9 or later.
 ### Core features
 
 - Opens KeePass databases in KDBX 3 and KDBX 4 format
-- Creates new KDBX 4 databases protected by a master password
+- Creates new KDBX 4 databases protected by a master password, a key file, a YubiKey, or any
+  combination of them, and can generate a new key file for you
 - Unlocks with a master password, a key file, a YubiKey, or any combination of them
+- Changes the master key of an open database to a new combination of password, key file and YubiKey
 - YubiKey HMAC-SHA1 challenge-response on slot 1 or slot 2, over NFC or USB
 - Key files in XML (`.keyx` and `.key`), 64-character hex, or any other file
 - Searches entries by title, group, username, URL and notes
