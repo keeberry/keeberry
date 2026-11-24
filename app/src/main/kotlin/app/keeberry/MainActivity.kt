@@ -4,7 +4,6 @@ import android.content.ActivityNotFoundException
 import android.content.ContentResolver
 import android.content.Intent
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult
@@ -16,7 +15,7 @@ import app.keeberry.ui.SettingsScreen
 import app.keeberry.ui.StartScreen
 import app.keeberry.ui.StartState
 
-class MainActivity : ComponentActivity() {
+class MainActivity : ThemedActivity() {
     private lateinit var model: MainViewModel
     private lateinit var settings: SettingsViewModel
 
@@ -61,6 +60,10 @@ class MainActivity : ComponentActivity() {
                     SettingsScreen(
                         settings.state,
                         onBack = { settings.showing = false },
+                        onThemeChange = {
+                            settings.changeTheme(it)
+                            applyTheme()
+                        },
                         onRecentLimitChange = {
                             settings.changeRecentLimit(it)
                             model.refreshRecents()

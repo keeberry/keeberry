@@ -41,7 +41,7 @@ running Android 9 or later.
 - Adds, edits and deletes entries, including custom fields with hidden values and groups
 - Moves deleted entries to the recycle bin, where you can restore them to their group or delete them for good
 - Remembers up to 10 recently opened databases for quick access; you choose how many in Settings
-- Adaptive layout for phones, foldables and tablets, with light and dark themes
+- Adaptive layout for phones, foldables and tablets, with light and dark themes that follow the system or your choice in Settings
 
 ### Security
 

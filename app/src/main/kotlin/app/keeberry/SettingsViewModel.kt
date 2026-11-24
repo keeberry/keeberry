@@ -18,8 +18,16 @@ internal class SettingsViewModel(application: Application) : AndroidViewModel(ap
     var showing by mutableStateOf(false)
     var recentLimit by mutableStateOf(settings.recentLimit)
         private set
+    var theme by mutableStateOf(settings.theme)
+        private set
 
-    val state get() = SettingsState(recentLimit)
+    val state get() = SettingsState(theme, recentLimit)
+
+    /** Saves [theme]; [ThemedActivity.applyTheme] then shows it. */
+    fun changeTheme(theme: AppSettings.Theme) {
+        settings.theme = theme
+        this.theme = theme
+    }
 
     fun changeRecentLimit(limit: Int) {
         recents.setLimit(limit)

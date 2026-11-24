@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
+import app.keeberry.AppSettings
 import app.keeberry.R
 
 /**
@@ -132,5 +133,6 @@ internal object TestTags {
     const val OPEN_SETTINGS = "open_settings_button"
     const val SETTINGS = "settings_screen"
     const val RECENT_LIMIT = "recent_limit_slider"
+    fun theme(theme: AppSettings.Theme) = "theme_${theme.name.lowercase()}_button"
 }
 

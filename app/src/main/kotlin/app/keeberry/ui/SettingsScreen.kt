@@ -1,8 +1,10 @@
 package app.keeberry.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -11,6 +13,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.ListItemDefaults
@@ -19,6 +23,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -33,8 +39,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -45,14 +53,19 @@ import app.keeberry.R
 import kotlin.math.roundToInt
 
 /** What the settings screen shows, kept apart from where it comes from so tests and previews can supply it. */
-internal class SettingsState(val recentLimit: Int)
+internal class SettingsState(val theme: AppSettings.Theme, val recentLimit: Int)
 
 /**
  * App-wide settings, reachable from the start screen and from an open database. Settings are grouped
  * into titled sections of segmented list items, under a large app bar that collapses as it scrolls.
  */
 @Composable
-internal fun SettingsScreen(state: SettingsState, onBack: () -> Unit, onRecentLimitChange: (Int) -> Unit) {
+internal fun SettingsScreen(
+    state: SettingsState,
+    onBack: () -> Unit,
+    onThemeChange: (AppSettings.Theme) -> Unit,
+    onRecentLimitChange: (Int) -> Unit,
+) {
     BackHandler(onBack = onBack)
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val direction = LocalLayoutDirection.current
@@ -75,7 +88,13 @@ internal fun SettingsScreen(state: SettingsState, onBack: () -> Unit, onRecentLi
                 bottom = padding.calculateBottomPadding() + 16.dp,
             ),
             horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            item {
+                SettingsSection(R.string.settings_appearance) {
+                    ThemeItem(state.theme, onThemeChange)
+                }
+            }
             item {
                 SettingsSection(R.string.recent_databases) {
                     RecentLimitItem(state.recentLimit, onRecentLimitChange)
@@ -98,6 +117,53 @@ private fun SettingsSection(title: Int, content: @Composable () -> Unit) {
         content()
     }
 }
+
+/** Light, dark or the system's theme, as a connected button group that selects one. */
+@Composable
+private fun ThemeItem(theme: AppSettings.Theme, onChange: (AppSettings.Theme) -> Unit) {
+    val options = AppSettings.Theme.entries
+    SegmentedListItem(
+        shapes = ListItemDefaults.segmentedShapes(0, 1),
+        colors = segmentedListColors(),
+        verticalAlignment = Alignment.Top,
+        leadingContent = { Icon(painterResource(R.drawable.ic_contrast), contentDescription = null) },
+        supportingContent = {
+            Row(
+                Modifier.padding(top = 12.dp).fillMaxWidth().selectableGroup(),
+                horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+            ) {
+                options.forEachIndexed { index, option ->
+                    ToggleButton(
+                        checked = option == theme,
+                        onCheckedChange = { if (option != theme) onChange(option) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .semantics { role = Role.RadioButton }
+                            .testTag(TestTags.theme(option)),
+                        shapes = when (index) {
+                            0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                            options.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                            else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                        },
+                        // The default unchecked fill is the list item's own, which would hide the buttons.
+                        colors = ToggleButtonDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
+                    ) {
+                        Text(stringResource(option.label), maxLines = 1)
+                    }
+                }
+            }
+        },
+    ) {
+        Text(stringResource(R.string.settings_theme))
+    }
+}
+
+private val AppSettings.Theme.label
+    get() = when (this) {
+        AppSettings.Theme.SYSTEM -> R.string.settings_theme_system
+        AppSettings.Theme.LIGHT -> R.string.settings_theme_light
+        AppSettings.Theme.DARK -> R.string.settings_theme_dark
+    }
 
 /**
  * How many databases the start screen remembers. The slider only saves once it's let go, since a
@@ -147,14 +213,14 @@ private fun RecentLimitItem(limit: Int, onChange: (Int) -> Unit) {
 }
 
 @Composable
-private fun SettingsPreview(limit: Int = AppSettings.DEFAULT_RECENT_LIMIT) {
-    KeeBerryTheme { SettingsScreen(SettingsState(limit), onBack = {}, onRecentLimitChange = {}) }
+private fun SettingsPreview(theme: AppSettings.Theme = AppSettings.Theme.SYSTEM, limit: Int = AppSettings.DEFAULT_RECENT_LIMIT) {
+    KeeBerryTheme { SettingsScreen(SettingsState(theme, limit), onBack = {}, onThemeChange = {}, onRecentLimitChange = {}) }
 }
 
 @ScreenPreviews
 @Composable
 private fun SettingsScreenPreview() = SettingsPreview()
 
-@Preview(name = "One database", showSystemUi = true)
+@Preview(name = "Dark theme, one database", showSystemUi = true)
 @Composable
-private fun SettingsOneRecentPreview() = SettingsPreview(limit = 1)
+private fun SettingsOneRecentPreview() = SettingsPreview(theme = AppSettings.Theme.DARK, limit = 1)

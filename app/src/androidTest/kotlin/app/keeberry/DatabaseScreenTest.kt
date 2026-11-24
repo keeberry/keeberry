@@ -368,6 +368,23 @@ class DatabaseScreenTest {
     }
 
     @Test
+    fun changingTheThemeKeepsTheDatabaseOpen() = withDatabase {
+        val settings = AppSettings(context)
+        try {
+            unlock()
+            compose.onNodeWithTag(TestTags.MORE_OPTIONS).performClick()
+            compose.onNodeWithTag(TestTags.OPEN_SETTINGS).performClick()
+            compose.onNodeWithTag(TestTags.theme(AppSettings.Theme.DARK)).performClick()
+            assertEquals(AppSettings.Theme.DARK, settings.theme)
+            compose.waitForIdle()
+            Espresso.pressBack()
+            compose.onNodeWithText("Second entry").assertIsDisplayed()
+        } finally {
+            settings.theme = AppSettings.Theme.SYSTEM
+        }
+    }
+
+    @Test
     fun leavingTheAppFromSettingsLocksTheDatabase() = withDatabase { scenario ->
         unlock()
         compose.onNodeWithTag(TestTags.MORE_OPTIONS).performClick()

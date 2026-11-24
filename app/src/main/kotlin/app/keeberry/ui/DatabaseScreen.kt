@@ -115,6 +115,7 @@ import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.ui.platform.LocalLayoutDirection
+import app.keeberry.AppSettings
 import app.keeberry.R
 import app.keeberry.DatabaseClipboard
 import app.keeberry.DatabaseViewModel
@@ -200,7 +201,9 @@ internal fun DatabaseScreen(
         // The bin starts at its list each time it opens.
         LaunchedEffect(browser.showingBin) { if (!browser.showingBin) browserState.removeState("bin") }
         when {
-            settings != null -> SettingsScreen(settings, settingsActions.onClose, settingsActions.onRecentLimitChange)
+            settings != null -> SettingsScreen(
+                settings, settingsActions.onClose, settingsActions.onThemeChange, settingsActions.onRecentLimitChange,
+            )
             keyChange != null -> ChangeMasterKeyScreen(keyChange, keyActions)
             editor != null -> EntryEditorScreen(editor, onSave = onSaveEntry, onDiscard = onDiscardEntry)
             browser.showingBin -> browserState.SaveableStateProvider("bin") {
@@ -285,6 +288,7 @@ private class BrowserActions(
 internal class SettingsActions(
     val onOpen: () -> Unit = {},
     val onClose: () -> Unit = {},
+    val onThemeChange: (AppSettings.Theme) -> Unit = {},
     val onRecentLimitChange: (Int) -> Unit = {},
 )
 

@@ -5,7 +5,6 @@ import android.content.ContentResolver
 import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.ActivityResultLauncher
@@ -21,7 +20,7 @@ import app.keeberry.ui.KeeBerryTheme
  * them), then where to save, and writes an empty database there. Finishes with the new document
  * as its result data and [EXTRA_DISPLAY_NAME].
  */
-class CreateDatabaseActivity : ComponentActivity() {
+class CreateDatabaseActivity : ThemedActivity() {
     private lateinit var model: CreateDatabaseViewModel
     private var picking = false
 

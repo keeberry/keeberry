@@ -1,11 +1,13 @@
 package app.keeberry
 
 import android.content.Context
+import android.content.res.Configuration
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -133,6 +135,30 @@ class StartScreenTest {
         // New databases now push out the oldest past the new limit.
         recents.add(Fixtures.uri("password.kdbx"), "Oldest")
         assertEquals(listOf("Oldest", "Newest"), recents.list().map { it.name })
+    }
+
+    @Test
+    fun choosingAThemeShowsItRightAway() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            compose.onNodeWithTag(TestTags.OPEN_SETTINGS).performClick()
+            compose.onNodeWithTag(TestTags.theme(AppSettings.Theme.SYSTEM)).assertIsOn()
+            for ((theme, night) in listOf(
+                AppSettings.Theme.DARK to Configuration.UI_MODE_NIGHT_YES,
+                AppSettings.Theme.LIGHT to Configuration.UI_MODE_NIGHT_NO,
+            )) {
+                compose.onNodeWithTag(TestTags.theme(theme)).performClick()
+                compose.waitUntil(10_000) { scenario.nightMode() == night }
+                // Recreated in the new theme, still in Settings.
+                compose.onNodeWithTag(TestTags.theme(theme)).assertIsOn()
+            }
+            assertEquals(AppSettings.Theme.LIGHT, AppSettings(context).theme)
+        }
+    }
+
+    private fun ActivityScenario<MainActivity>.nightMode(): Int {
+        var mode = 0
+        onActivity { mode = it.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK }
+        return mode
     }
 
     private fun hasStateDescription(value: String) =

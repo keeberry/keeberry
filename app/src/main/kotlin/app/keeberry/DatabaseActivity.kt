@@ -6,7 +6,6 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.view.WindowManager
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.ActivityResultLauncher
@@ -20,7 +19,7 @@ import app.keeberry.ui.MasterKeyActions
 import app.keeberry.ui.SettingsActions
 import app.keeberry.ui.UnlockState
 
-class DatabaseActivity : ComponentActivity() {
+class DatabaseActivity : ThemedActivity() {
     private lateinit var model: DatabaseViewModel
     private lateinit var databaseUri: Uri
     private var pickingKey = false
@@ -129,6 +128,10 @@ class DatabaseActivity : ComponentActivity() {
                     settingsActions = SettingsActions(
                         onOpen = { settings.showing = true },
                         onClose = { settings.showing = false },
+                        onThemeChange = {
+                            settings.changeTheme(it)
+                            applyTheme()
+                        },
                         onRecentLimitChange = settings::changeRecentLimit,
                     ),
                 )
