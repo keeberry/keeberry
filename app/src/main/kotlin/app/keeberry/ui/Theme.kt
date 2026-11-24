@@ -135,7 +135,6 @@ internal object TestTags {
     const val DARK_THEME = "dark_theme_item"
     const val DARK_THEME_SWITCH = "dark_theme_switch"
     const val DARK_THEME_PAGE = "dark_theme_page"
-    const val USE_DARK_THEME = "use_dark_theme_switch"
-    const val MATCH_DEVICE = "match_device_theme_item"
+    fun themeOption(name: String) = "theme_option_${name.lowercase()}"
 }
 

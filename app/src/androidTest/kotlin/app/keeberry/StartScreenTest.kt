@@ -7,6 +7,8 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
@@ -156,13 +158,14 @@ class StartScreenTest {
             compose.onNodeWithTag(TestTags.DARK_THEME_SWITCH).assertIs(!deviceDark)
 
             compose.onNodeWithTag(TestTags.DARK_THEME).performClick()
-            compose.onNodeWithTag(TestTags.USE_DARK_THEME).assertIs(!deviceDark)
-            compose.onNodeWithTag(TestTags.MATCH_DEVICE).assertIsOff().performClick()
+            val chosen = if (deviceDark) "LIGHT" else "DARK"
+            compose.onNodeWithTag(TestTags.themeOption(chosen)).assertIsSelected()
+            compose.onNodeWithTag(TestTags.themeOption("SYSTEM")).assertIsNotSelected().performClick()
             assertEquals(AppSettings.Theme.SYSTEM, AppSettings(context).theme)
             compose.waitUntil(10_000) { scenario.nightMode() == device }
             // Still on the dark theme page.
-            compose.onNodeWithTag(TestTags.MATCH_DEVICE).assertIsOn()
-            compose.onNodeWithTag(TestTags.USE_DARK_THEME).assertIs(deviceDark)
+            compose.onNodeWithTag(TestTags.themeOption("SYSTEM")).assertIsSelected()
+            compose.onNodeWithTag(TestTags.themeOption(chosen)).assertIsNotSelected()
         }
     }
 

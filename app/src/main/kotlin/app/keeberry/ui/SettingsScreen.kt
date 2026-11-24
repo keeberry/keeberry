@@ -2,14 +2,13 @@ package app.keeberry.ui
 
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -19,16 +18,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Slider
@@ -37,7 +37,9 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.VerticalDivider
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -46,8 +48,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -59,8 +61,6 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.semantics.toggleableState
-import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -74,8 +74,8 @@ internal class SettingsState(val theme: AppSettings.Theme, val recentLimit: Int)
 /**
  * App-wide settings, reachable from the start screen and from an open database. Settings are grouped
  * into titled sections of segmented list items, under a large app bar that collapses as it scrolls,
- * and laid out like Android's own settings. The dark theme row opens a page of its own, as it does in
- * the system's display settings.
+ * and laid out like Android's own settings: bright groups on a container-colored screen. The dark
+ * mode row opens a page of its own, as it does in the system's display settings.
  */
 @Composable
 internal fun SettingsScreen(
@@ -93,7 +93,7 @@ internal fun SettingsScreen(
     SettingsScaffold(R.string.settings, onBack, Modifier.testTag(TestTags.SETTINGS)) {
         item {
             SettingsSection(R.string.settings_appearance) {
-                DarkThemeItem(state.theme, onOpen = { darkThemeOpen = true }, onThemeChange)
+                DarkModeItem(state.theme, onOpen = { darkThemeOpen = true }, onThemeChange)
             }
         }
         item {
@@ -110,15 +110,18 @@ private fun SettingsScaffold(title: Int, onBack: () -> Unit, modifier: Modifier 
     BackHandler(onBack = onBack)
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val direction = LocalLayoutDirection.current
+    val background = MaterialTheme.colorScheme.surfaceContainer
     Scaffold(
         Modifier.nestedScroll(scroll.nestedScrollConnection),
         topBar = {
             LargeFlexibleTopAppBar(
                 title = { Text(stringResource(title)) },
                 navigationIcon = { BackButton(onBack) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = background, scrolledContainerColor = background),
                 scrollBehavior = scroll,
             )
         },
+        containerColor = background,
     ) { padding ->
         LazyColumn(
             modifier.fillMaxSize().consumeWindowInsets(padding),
@@ -135,14 +138,21 @@ private fun SettingsScaffold(title: Int, onBack: () -> Unit, modifier: Modifier 
     }
 }
 
-/** A titled group of settings. Wide windows keep it to a readable width. */
+/**
+ * A titled group of settings, like AOSP's expressive preference category: the title sits 24.dp from
+ * the screen's edge, 8.dp in from its group. Wide windows keep the group to a readable width.
+ */
 @Composable
-private fun SettingsSection(title: Int?, content: @Composable () -> Unit) {
-    Column(Modifier.widthIn(max = 640.dp).fillMaxWidth()) {
+private fun SettingsSection(title: Int?, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Column(
+        modifier.widthIn(max = 640.dp).fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
+    ) {
         if (title != null) {
             Text(
                 stringResource(title),
-                Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp).semantics { heading() },
+                Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 8.dp - ListItemDefaults.SegmentedGap)
+                    .semantics { heading() },
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -151,88 +161,97 @@ private fun SettingsSection(title: Int?, content: @Composable () -> Unit) {
     }
 }
 
+/** Theme choices in the order Android's dark theme options list them. */
+private val THEME_OPTIONS = listOf(AppSettings.Theme.LIGHT, AppSettings.Theme.DARK, AppSettings.Theme.SYSTEM)
+
+private val AppSettings.Theme.label
+    get() = when (this) {
+        AppSettings.Theme.LIGHT -> R.string.theme_off
+        AppSettings.Theme.DARK -> R.string.theme_on
+        AppSettings.Theme.SYSTEM -> R.string.theme_device
+    }
+
 /**
- * The dark theme row of Android's display settings: tapping it opens the dark theme page, and its
- * switch, set apart by a divider, turns the dark theme on or off right there. The switch shows the
- * theme in use, so while KeeBerry matches the device it shows the device's.
+ * AOSP's two-target preference: the row opens the dark theme page, and the switch, set apart by a
+ * divider, turns dark mode on or off right there. The switch shows the theme in use, so while
+ * KeeBerry uses the device theme it shows the device's.
  */
 @Composable
-private fun DarkThemeItem(theme: AppSettings.Theme, onOpen: () -> Unit, onChange: (AppSettings.Theme) -> Unit) {
+private fun DarkModeItem(theme: AppSettings.Theme, onOpen: () -> Unit, onChange: (AppSettings.Theme) -> Unit) {
     val dark = isSystemInDarkTheme()
-    SegmentedListItem(
+    val title = stringResource(R.string.dark_mode)
+    // ListItem shrinks the minimum touch size of trailing content by the row's padding, but here
+    // that padding belongs to the row's own target, so the switch keeps the full minimum size.
+    val minimumTouchSize = LocalMinimumInteractiveComponentSize.current
+    val switchInteractions = remember { MutableInteractionSource() }
+    SettingsItem(
+        headline = title,
+        value = stringResource(theme.label),
         onClick = onOpen,
-        shapes = ListItemDefaults.segmentedShapes(0, 1),
-        colors = segmentedListColors(),
         modifier = Modifier.testTag(TestTags.DARK_THEME),
-        leadingContent = { Icon(painterResource(R.drawable.ic_dark_mode), contentDescription = null) },
-        supportingContent = { Text(stringResource(darkThemeSummary(theme, dark))) },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                VerticalDivider(Modifier.height(32.dp))
-                Spacer(Modifier.width(16.dp))
-                SettingsSwitch(
-                    checked = dark,
-                    onCheckedChange = { onChange(if (it) AppSettings.Theme.DARK else AppSettings.Theme.LIGHT) },
-                    modifier = Modifier.testTag(TestTags.DARK_THEME_SWITCH),
+                Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null, Modifier.size(18.dp))
+                VerticalDivider(
+                    Modifier.padding(start = 8.dp, end = 12.dp).height(40.dp),
+                    color = MaterialTheme.colorScheme.outline,
                 )
+                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides minimumTouchSize) {
+                    // A separate focusable control, as in TwoTargetSwitchPreference. The toggle wraps
+                    // the minimum size so its touch and accessibility bounds cover the whole target,
+                    // not only the switch track drawn inside it.
+                    Box(
+                        Modifier
+                            .semantics { contentDescription = title }
+                            .toggleable(
+                                value = dark,
+                                onValueChange = { onChange(if (it) AppSettings.Theme.DARK else AppSettings.Theme.LIGHT) },
+                                role = Role.Switch,
+                                interactionSource = switchInteractions,
+                                indication = null,
+                            )
+                            .minimumInteractiveComponentSize()
+                            .testTag(TestTags.DARK_THEME_SWITCH),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        // Shares the interactions so the thumb and focus ring still respond.
+                        Switch(
+                            checked = dark,
+                            onCheckedChange = null,
+                            interactionSource = switchInteractions,
+                            // AOSP's expressive switch uses primary for the check mark on onPrimary.
+                            colors = SwitchDefaults.colors(checkedIconColor = MaterialTheme.colorScheme.primary),
+                            thumbContent = {
+                                Icon(
+                                    painterResource(if (dark) R.drawable.ic_check else R.drawable.ic_switch_off),
+                                    contentDescription = null,
+                                    Modifier.size(SwitchDefaults.IconSize),
+                                )
+                            },
+                        )
+                    }
+                }
             }
         },
-    ) {
-        Text(stringResource(R.string.settings_dark_theme))
-    }
+    )
 }
 
-private fun darkThemeSummary(theme: AppSettings.Theme, dark: Boolean) = when (theme) {
-    AppSettings.Theme.SYSTEM -> if (dark) R.string.dark_theme_on_matching else R.string.dark_theme_off_matching
-    AppSettings.Theme.LIGHT -> R.string.dark_theme_off
-    AppSettings.Theme.DARK -> R.string.dark_theme_on
-}
-
-/**
- * The dark theme page of Android's settings: an introduction, the main switch, then whether to
- * match the device, where the system's page has its schedule. Using the main switch stops matching.
- */
+/** The dark theme page: its options as radio preferences, each row one target for touch and TalkBack. */
 @Composable
 private fun DarkThemeScreen(theme: AppSettings.Theme, onBack: () -> Unit, onChange: (AppSettings.Theme) -> Unit) {
-    val dark = isSystemInDarkTheme()
-    val explicit = { on: Boolean -> if (on) AppSettings.Theme.DARK else AppSettings.Theme.LIGHT }
-    SettingsScaffold(R.string.settings_dark_theme, onBack, Modifier.testTag(TestTags.DARK_THEME_PAGE)) {
+    SettingsScaffold(R.string.dark_theme, onBack, Modifier.testTag(TestTags.DARK_THEME_PAGE)) {
         item {
-            SettingsSection(null) {
-                Text(
-                    stringResource(R.string.dark_theme_intro),
-                    Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        item {
-            SettingsSection(null) {
-                MainSwitch(
-                    stringResource(R.string.dark_theme_use),
-                    checked = dark,
-                    onCheckedChange = { onChange(explicit(it)) },
-                    modifier = Modifier.testTag(TestTags.USE_DARK_THEME),
-                )
-            }
-        }
-        item {
-            SettingsSection(null) {
-                val matching = theme == AppSettings.Theme.SYSTEM
-                SegmentedListItem(
-                    // Turning it off keeps the theme in use, now chosen rather than matched.
-                    onClick = { onChange(if (matching) explicit(dark) else AppSettings.Theme.SYSTEM) },
-                    shapes = ListItemDefaults.segmentedShapes(0, 1),
-                    colors = segmentedListColors(),
-                    supportingContent = { Text(stringResource(R.string.dark_theme_match_device_summary)) },
-                    trailingContent = { SettingsSwitch(checked = matching, onCheckedChange = null) },
-                    modifier = Modifier.testTag(TestTags.MATCH_DEVICE).semantics(mergeDescendants = true) {
-                        role = Role.Switch
-                        toggleableState = ToggleableState(matching)
-                    },
-                ) {
-                    Text(stringResource(R.string.dark_theme_match_device))
+            SettingsSection(R.string.theme_options, Modifier.selectableGroup()) {
+                THEME_OPTIONS.forEachIndexed { index, option ->
+                    SettingsItem(
+                        headline = stringResource(option.label),
+                        onClick = { if (option != theme) onChange(option) },
+                        index = index,
+                        count = THEME_OPTIONS.size,
+                        selected = option == theme,
+                        modifier = Modifier.testTag(TestTags.themeOption(option.name)),
+                        leadingContent = { RadioButton(selected = option == theme, onClick = null) },
+                    )
                 }
             }
         }
@@ -240,42 +259,61 @@ private fun DarkThemeScreen(theme: AppSettings.Theme, onBack: () -> Unit, onChan
 }
 
 /**
- * The main switch at the top of an Android settings page: a large rounded bar that fills with the
- * primary container color while it's on, and toggles wherever it's tapped.
+ * A preference row, as Android's expressive settings draw it: a titleMedium headline over its value,
+ * at least 72.dp tall, in a bright group whose outline stays put when pressed or selected. Radio
+ * preferences show their selection with the radio, not the row.
  */
 @Composable
-private fun MainSwitch(title: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
-    val colors = MaterialTheme.colorScheme
-    val container by animateColorAsState(if (checked) colors.primaryContainer else colors.surfaceContainerHighest)
-    val content by animateColorAsState(if (checked) colors.onPrimaryContainer else colors.onSurface)
-    Row(
-        modifier
-            .fillMaxWidth()
-            .heightIn(min = 72.dp)
-            .clip(RoundedCornerShape(28.dp))
-            .background(container)
-            .toggleable(checked, role = Role.Switch, onValueChange = onCheckedChange)
-            .padding(start = 24.dp, end = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, color = content)
-        Spacer(Modifier.width(16.dp))
-        SettingsSwitch(checked, onCheckedChange = null)
+private fun SettingsItem(
+    headline: String,
+    modifier: Modifier = Modifier,
+    value: String? = null,
+    onClick: (() -> Unit)? = null,
+    index: Int = 0,
+    count: Int = 1,
+    selected: Boolean? = null,
+    leadingContent: @Composable (() -> Unit)? = null,
+    trailingContent: @Composable (() -> Unit)? = null,
+    verticalAlignment: Alignment.Vertical =
+        if (leadingContent != null || trailingContent != null) Alignment.CenterVertically else ListItemDefaults.verticalAlignment(),
+    supportingContent: @Composable (() -> Unit)? = value?.let { { Text(it) } },
+) {
+    val segmented = ListItemDefaults.segmentedShapes(index, count)
+    val shapes = segmented.copy(selectedShape = segmented.shape, pressedShape = segmented.shape)
+    val colors = settingsItemColors()
+    val typography = MaterialTheme.typography
+    val padding = ListItemDefaults.ContentPadding
+    val twoLines = with(LocalDensity.current) { typography.titleMedium.lineHeight.toDp() + typography.bodyMedium.lineHeight.toDp() }
+    // Material's 72.dp two-line minimum, growing with the font size.
+    val minHeight = maxOf(72.dp, twoLines + padding.calculateTopPadding() + padding.calculateBottomPadding())
+    val rowModifier = modifier.fillMaxWidth().heightIn(min = minHeight)
+    val headlineText = @Composable { Text(headline, style = typography.titleMedium) }
+    when {
+        selected != null && onClick != null -> SegmentedListItem(
+            selected = selected, onClick = onClick, shapes = shapes, colors = colors, modifier = rowModifier,
+            leadingContent = leadingContent, trailingContent = trailingContent, supportingContent = supportingContent,
+            verticalAlignment = verticalAlignment, content = headlineText,
+        )
+        onClick != null -> SegmentedListItem(
+            onClick = onClick, shapes = shapes, colors = colors, modifier = rowModifier,
+            leadingContent = leadingContent, trailingContent = trailingContent, supportingContent = supportingContent,
+            verticalAlignment = verticalAlignment, content = headlineText,
+        )
+        else -> SegmentedListItem(
+            shapes = shapes, colors = colors, modifier = rowModifier,
+            leadingContent = leadingContent, trailingContent = trailingContent, supportingContent = supportingContent,
+            verticalAlignment = verticalAlignment, content = headlineText,
+        )
     }
 }
 
-/** A switch as Android's settings draw it, with a check mark on the thumb while it's on. */
+/** Android Settings fills expressive preference groups with surfaceBright, in both themes. */
 @Composable
-private fun SettingsSwitch(checked: Boolean, onCheckedChange: ((Boolean) -> Unit)?, modifier: Modifier = Modifier) {
-    Switch(
-        checked = checked,
-        onCheckedChange = onCheckedChange,
-        modifier = modifier,
-        thumbContent = if (checked) {
-            { Icon(painterResource(R.drawable.ic_check), contentDescription = null, Modifier.size(SwitchDefaults.IconSize)) }
-        } else null,
-    )
-}
+private fun settingsItemColors() = ListItemDefaults.segmentedColors(
+    containerColor = MaterialTheme.colorScheme.surfaceBright,
+    selectedContainerColor = MaterialTheme.colorScheme.surfaceBright,
+    selectedContentColor = MaterialTheme.colorScheme.onSurface,
+)
 
 /**
  * How many databases the start screen remembers. The slider only saves once it's let go, since a
@@ -286,9 +324,8 @@ private fun RecentLimitItem(limit: Int, onChange: (Int) -> Unit) {
     var value by remember(limit) { mutableIntStateOf(limit) }
     val range = AppSettings.RECENT_LIMITS
     val title = stringResource(R.string.settings_recent_limit)
-    SegmentedListItem(
-        shapes = ListItemDefaults.segmentedShapes(0, 1),
-        colors = segmentedListColors(),
+    SettingsItem(
+        headline = title,
         verticalAlignment = Alignment.Top,
         leadingContent = { Icon(painterResource(R.drawable.ic_history), contentDescription = null) },
         trailingContent = {
@@ -319,9 +356,7 @@ private fun RecentLimitItem(limit: Int, onChange: (Int) -> Unit) {
                 )
             }
         },
-    ) {
-        Text(title)
-    }
+    )
 }
 
 @Composable
