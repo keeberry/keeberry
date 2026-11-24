@@ -356,6 +356,26 @@ class DatabaseScreenTest {
         savedFile().close()
     }
 
+    @Test
+    fun opensSettingsFromAnOpenDatabase() = withDatabase {
+        unlock()
+        compose.onNodeWithTag(TestTags.MORE_OPTIONS).performClick()
+        compose.onNodeWithTag(TestTags.OPEN_SETTINGS).performClick()
+        compose.onNodeWithText(context.getString(R.string.settings_recent_limit)).assertIsDisplayed()
+        Espresso.pressBack()
+        // Still unlocked, where it was.
+        compose.onNodeWithText("Second entry").assertIsDisplayed()
+    }
+
+    @Test
+    fun leavingTheAppFromSettingsLocksTheDatabase() = withDatabase { scenario ->
+        unlock()
+        compose.onNodeWithTag(TestTags.MORE_OPTIONS).performClick()
+        compose.onNodeWithTag(TestTags.OPEN_SETTINGS).performClick()
+        scenario.moveToState(Lifecycle.State.CREATED)
+        assertEquals(Lifecycle.State.DESTROYED, scenario.state)
+    }
+
     private var fixture = ""
 
     /** The fixture file as the app left it. */

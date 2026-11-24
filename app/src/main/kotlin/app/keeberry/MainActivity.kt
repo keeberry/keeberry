@@ -12,11 +12,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import app.keeberry.ui.KeeBerryTheme
+import app.keeberry.ui.SettingsScreen
 import app.keeberry.ui.StartScreen
 import app.keeberry.ui.StartState
 
 class MainActivity : ComponentActivity() {
     private lateinit var model: MainViewModel
+    private lateinit var settings: SettingsViewModel
 
     private val pickDocument = registerForActivityResult(StartActivityForResult()) { result ->
         if (result.resultCode != RESULT_OK) return@registerForActivityResult
@@ -36,6 +38,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         model = ViewModelProvider(this)[MainViewModel::class.java]
+        settings = ViewModelProvider(this)[SettingsViewModel::class.java]
         enableEdgeToEdge()
         setContent {
             KeeBerryTheme {
@@ -54,15 +57,27 @@ class MainActivity : ComponentActivity() {
                             .putExtra(DatabaseActivity.EXTRA_DISPLAY_NAME, request.name),
                     )
                 }
-                StartScreen(
-                    state = StartState(model.recentDatabases, model.checking, model.message, model.created),
-                    onOpenDatabase = ::pickDatabase,
-                    onCreateDatabase = ::startCreating,
-                    onRecent = model::onRecentChosen,
-                    onRemoveRecent = model::removeRecent,
-                    onDismissMessage = { model.message = null },
-                    onDismissCreated = { model.created = null },
-                )
+                if (settings.showing) {
+                    SettingsScreen(
+                        settings.state,
+                        onBack = { settings.showing = false },
+                        onRecentLimitChange = {
+                            settings.changeRecentLimit(it)
+                            model.refreshRecents()
+                        },
+                    )
+                } else {
+                    StartScreen(
+                        state = StartState(model.recentDatabases, model.checking, model.message, model.created),
+                        onOpenDatabase = ::pickDatabase,
+                        onCreateDatabase = ::startCreating,
+                        onRecent = model::onRecentChosen,
+                        onRemoveRecent = model::removeRecent,
+                        onDismissMessage = { model.message = null },
+                        onDismissCreated = { model.created = null },
+                        onOpenSettings = { settings.showing = true },
+                    )
+                }
             }
         }
     }

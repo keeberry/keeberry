@@ -12,12 +12,14 @@ import org.json.JSONObject
 /**
  * Databases opened before, newest first. Only the document link and its display name are stored, and
  * only for documents whose access the provider let KeeBerry keep across restarts. Write access is
- * kept too when the provider granted it, so changes can be saved later.
+ * kept too when the provider granted it, so changes can be saved later. How many are kept is
+ * [AppSettings.recentLimit].
  */
 internal class RecentDatabases(context: Context) {
     class Recent(val uri: Uri, val name: String)
 
     private val app = context.applicationContext
+    private val settings = AppSettings(app)
     // The file keeps the app's earlier name, so existing recents and their kept access carry over.
     private val preferences = app.getSharedPreferences("recent_vaults", Context.MODE_PRIVATE)
 
@@ -64,9 +66,20 @@ internal class RecentDatabases(context: Context) {
 
     /** Puts a database with kept access first, and forgets the oldest past the limit. */
     fun add(uri: Uri, name: String) {
+        val limit = settings.recentLimit
         val others = list().filter { it.uri != uri }
-        others.drop(MAX - 1).forEach { release(it.uri) }
-        save(listOf(Recent(uri, name)) + others.take(MAX - 1))
+        others.drop(limit - 1).forEach { release(it.uri) }
+        save(listOf(Recent(uri, name)) + others.take(limit - 1))
+    }
+
+    /** Changes how many databases are remembered, forgetting the oldest past the new limit. */
+    fun setLimit(limit: Int) {
+        settings.recentLimit = limit
+        val recents = list()
+        val kept = settings.recentLimit
+        if (recents.size <= kept) return
+        recents.drop(kept).forEach { release(it.uri) }
+        save(recents.take(kept))
     }
 
     /** Forgets [uri] and gives up access to it. The file itself is untouched. */
@@ -98,6 +111,5 @@ internal class RecentDatabases(context: Context) {
 
     private companion object {
         const val KEY = "recents"
-        const val MAX = 5
     }
 }

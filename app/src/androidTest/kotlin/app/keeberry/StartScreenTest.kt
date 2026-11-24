@@ -1,6 +1,10 @@
 package app.keeberry
 
 import android.content.Context
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -9,9 +13,11 @@ import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.keeberry.ui.TestTags
 import org.junit.After
@@ -33,6 +39,7 @@ class StartScreenTest {
     @After
     fun forgetRecents() {
         context.getSharedPreferences("recent_vaults", Context.MODE_PRIVATE).edit().clear().commit()
+        context.getSharedPreferences("settings", Context.MODE_PRIVATE).edit().clear().commit()
     }
 
     @Test
@@ -95,4 +102,39 @@ class StartScreenTest {
             assertEquals(emptyList<RecentDatabases.Recent>(), recents.list())
         }
     }
+
+    @Test
+    fun opensSettingsBeforeAnyDatabase() {
+        ActivityScenario.launch(MainActivity::class.java).use {
+            compose.onNodeWithTag(TestTags.OPEN_SETTINGS).performClick()
+            compose.onNodeWithText(context.getString(R.string.settings_recent_limit)).assertIsDisplayed()
+            compose.onNodeWithTag(TestTags.RECENT_LIMIT).assert(hasStateDescription("${AppSettings.DEFAULT_RECENT_LIMIT}"))
+            Espresso.pressBack()
+            compose.onNodeWithText(context.getString(R.string.open_database)).assertIsDisplayed()
+        }
+    }
+
+    @Test
+    fun loweringTheLimitForgetsTheOldestDatabases() {
+        recents.add(Fixtures.uri("password.kdbx"), "Oldest")
+        recents.add(Fixtures.uri("modern-aes-kdf.kdbx"), "Middle")
+        recents.add(Fixtures.uri("modern-argon2id.kdbx"), "Newest")
+        ActivityScenario.launch(MainActivity::class.java).use {
+            compose.onNodeWithTag(TestTags.OPEN_SETTINGS).performClick()
+            compose.onNodeWithTag(TestTags.RECENT_LIMIT).performSemanticsAction(SemanticsActions.SetProgress) { it(2f) }
+            compose.onNodeWithTag(TestTags.RECENT_LIMIT).assert(hasStateDescription("2"))
+            Espresso.pressBack()
+            compose.onNodeWithText("Newest").assertIsDisplayed()
+            compose.onNodeWithText("Middle").assertIsDisplayed()
+            compose.onNodeWithText("Oldest").assertDoesNotExist()
+        }
+        assertEquals(2, AppSettings(context).recentLimit)
+        assertEquals(listOf("Newest", "Middle"), recents.list().map { it.name })
+        // New databases now push out the oldest past the new limit.
+        recents.add(Fixtures.uri("password.kdbx"), "Oldest")
+        assertEquals(listOf("Oldest", "Newest"), recents.list().map { it.name })
+    }
+
+    private fun hasStateDescription(value: String) =
+        SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, value)
 }

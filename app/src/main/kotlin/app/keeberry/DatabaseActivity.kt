@@ -17,6 +17,7 @@ import app.keeberry.ui.BrowserState
 import app.keeberry.ui.KeeBerryTheme
 import app.keeberry.ui.DatabaseScreen
 import app.keeberry.ui.MasterKeyActions
+import app.keeberry.ui.SettingsActions
 import app.keeberry.ui.UnlockState
 
 class DatabaseActivity : ComponentActivity() {
@@ -58,6 +59,7 @@ class DatabaseActivity : ComponentActivity() {
         }
         databaseUri = uri
         model = ViewModelProvider(this)[DatabaseViewModel::class.java]
+        val settings = ViewModelProvider(this)[SettingsViewModel::class.java]
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         enableEdgeToEdge()
         // After a configuration change the model still holds the database or the unlock in progress.
@@ -121,6 +123,13 @@ class DatabaseActivity : ComponentActivity() {
                             launchPicker(createNewKeyDocument, intent)
                         },
                         onChangedShown = { model.keyChanged = false },
+                    ),
+                    // Shown in place, so leaving the app from them still locks the database.
+                    settings = settings.state.takeIf { settings.showing },
+                    settingsActions = SettingsActions(
+                        onOpen = { settings.showing = true },
+                        onClose = { settings.showing = false },
+                        onRecentLimitChange = settings::changeRecentLimit,
                     ),
                 )
             }

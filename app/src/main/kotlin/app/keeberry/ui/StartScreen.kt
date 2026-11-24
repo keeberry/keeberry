@@ -1,6 +1,7 @@
 package app.keeberry.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -19,6 +20,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedListItem
@@ -32,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
@@ -62,6 +66,7 @@ internal fun StartScreen(
     onRemoveRecent: (RecentDatabases.Recent) -> Unit,
     onDismissMessage: () -> Unit,
     onDismissCreated: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     var removing by remember { mutableStateOf<RecentDatabases.Recent?>(null) }
     Surface(Modifier.fillMaxSize()) {
@@ -109,6 +114,15 @@ internal fun StartScreen(
                     )
                     if (state.recents.isNotEmpty()) {
                         RecentList(state.recents, enabled = !state.checking, onRecent, onLongPress = { removing = it })
+                    }
+                }
+            }
+            // Settings apply to every database, so they're here before one is opened.
+            val settings = stringResource(R.string.settings)
+            Box(Modifier.align(Alignment.TopEnd).padding(4.dp)) {
+                WithTooltip(settings) {
+                    IconButton(onOpenSettings, shapes = IconButtonDefaults.shapes(), modifier = Modifier.testTag(TestTags.OPEN_SETTINGS)) {
+                        Icon(painterResource(R.drawable.ic_settings), settings)
                     }
                 }
             }
@@ -213,6 +227,7 @@ private fun StartPreview(
             onRemoveRecent = {},
             onDismissMessage = {},
             onDismissCreated = {},
+            onOpenSettings = {},
         )
     }
 }

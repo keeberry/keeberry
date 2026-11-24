@@ -129,5 +129,8 @@ internal object TestTags {
     const val CONFIRM_RESTORE = "confirm_restore_button"
     const val EMPTY_BIN = "empty_bin_button"
     const val CONFIRM_EMPTY_BIN = "confirm_empty_bin_button"
+    const val OPEN_SETTINGS = "open_settings_button"
+    const val SETTINGS = "settings_screen"
+    const val RECENT_LIMIT = "recent_limit_slider"
 }
 

@@ -186,17 +186,21 @@ internal fun DatabaseScreen(
     keyChange: MasterKeyChange? = null,
     keyChanged: Boolean = false,
     keyActions: MasterKeyActions = MasterKeyActions(),
+    /** The app's settings, while they cover the open database. */
+    settings: SettingsState? = null,
+    settingsActions: SettingsActions = SettingsActions(),
 ) {
     // The list and the open entry keep their place while the entry form or the recycle bin covers them.
     val browserState = rememberSaveableStateHolder()
     if (browser != null) {
         val actions = BrowserActions(
             onBack, onLock, onSavedEntryShown, onNewEntry, onEditEntry, onDeleteEntry, onRestoreEntry, onEmptyBin, onDismissChange,
-            onShowBin, keyActions.onStart,
+            onShowBin, keyActions.onStart, settingsActions.onOpen,
         )
         // The bin starts at its list each time it opens.
         LaunchedEffect(browser.showingBin) { if (!browser.showingBin) browserState.removeState("bin") }
         when {
+            settings != null -> SettingsScreen(settings, settingsActions.onClose, settingsActions.onRecentLimitChange)
             keyChange != null -> ChangeMasterKeyScreen(keyChange, keyActions)
             editor != null -> EntryEditorScreen(editor, onSave = onSaveEntry, onDiscard = onDiscardEntry)
             browser.showingBin -> browserState.SaveableStateProvider("bin") {
@@ -240,7 +244,7 @@ internal fun DatabaseScreen(
 }
 
 @Composable
-private fun BackButton(onClick: () -> Unit) {
+internal fun BackButton(onClick: () -> Unit) {
     IconButton(onClick, shapes = IconButtonDefaults.shapes()) {
         Icon(painterResource(R.drawable.ic_back), stringResource(R.string.database_back))
     }
@@ -274,6 +278,14 @@ private class BrowserActions(
     val onDismissChange: () -> Unit,
     val onShowBin: (Boolean) -> Unit,
     val onChangeKey: () -> Unit,
+    val onOpenSettings: () -> Unit,
+)
+
+/** What the settings screen can ask for while a database is open. */
+internal class SettingsActions(
+    val onOpen: () -> Unit = {},
+    val onClose: () -> Unit = {},
+    val onRecentLimitChange: (Int) -> Unit = {},
 )
 
 /** What the change-master-key form can ask for. */
@@ -315,7 +327,7 @@ private fun ChangeMasterKeyScreen(change: MasterKeyChange, actions: MasterKeyAct
 }
 
 @Composable
-private fun MoreOptionsButton(onChangeKey: () -> Unit) {
+private fun MoreOptionsButton(onChangeKey: (() -> Unit)?, onOpenSettings: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         val label = stringResource(R.string.more_options)
@@ -329,13 +341,23 @@ private fun MoreOptionsButton(onChangeKey: () -> Unit) {
             onDismissRequest = { open = false },
             properties = PopupProperties(focusable = true, securePolicy = SecureFlagPolicy.SecureOn),
         ) {
+            if (onChangeKey != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.master_key_change)) },
+                    onClick = {
+                        open = false
+                        onChangeKey()
+                    },
+                    modifier = Modifier.testTag(TestTags.CHANGE_MASTER_KEY),
+                )
+            }
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.master_key_change)) },
+                text = { Text(stringResource(R.string.settings)) },
                 onClick = {
                     open = false
-                    onChangeKey()
+                    onOpenSettings()
                 },
-                modifier = Modifier.testTag(TestTags.CHANGE_MASTER_KEY),
+                modifier = Modifier.testTag(TestTags.OPEN_SETTINGS),
             )
         }
     }
@@ -426,7 +448,7 @@ private fun DatabaseBrowser(state: BrowserState, fileName: String?, actions: Bro
                                 ) { Text(stringResource(R.string.recycle_bin_empty_action)) }
                             }
                             LockButton(onLock)
-                            if (!bin && state.canEdit) MoreOptionsButton(actions.onChangeKey)
+                            if (!bin) MoreOptionsButton(actions.onChangeKey.takeIf { state.canEdit }, actions.onOpenSettings)
                         }
                         if (subtitle == null) {
                             TopAppBar(title = heading, navigationIcon = back, actions = buttons)
@@ -1034,7 +1056,7 @@ private fun FieldItem(field: DatabaseField, shapes: ListItemShapes) {
 /** Names an icon-only button for sighted users, as its content description does for TalkBack. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun WithTooltip(text: String, content: @Composable () -> Unit) {
+internal fun WithTooltip(text: String, content: @Composable () -> Unit) {
     TooltipBox(
         positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
         tooltip = { PlainTooltip { Text(text) } },
