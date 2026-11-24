@@ -2,20 +2,27 @@ package app.keeberry
 
 import android.content.Context
 import android.content.res.Configuration
+import android.os.Build
 import androidx.activity.ComponentActivity
 
 /**
- * A screen in the theme chosen in Settings. A light or dark choice overrides the night mode of the
- * screen's configuration, so resources, the window and Compose all follow it as they would the
- * system's. A screen recreates itself when the choice changed since it was made, which keeps what
- * its view model holds, an open database included.
+ * A screen in the theme chosen in Settings. From Android 12 the system applies the choice, splash
+ * screen included, through [AppSettings.applyTheme]. Before that, a light or dark choice overrides
+ * the night mode of the screen's configuration, so resources, the window and Compose all follow it
+ * as they would the system's, and a screen recreates itself when the choice changed since it was
+ * made. Either way a recreated screen keeps what its view model holds, an open database included.
  */
 abstract class ThemedActivity : ComponentActivity() {
     private var appliedTheme: AppSettings.Theme? = null
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(newBase)
-        val theme = AppSettings(newBase).theme
+        val settings = AppSettings(newBase)
+        if (SYSTEM_APPLIES_THEME) {
+            settings.applyTheme()
+            return
+        }
+        val theme = settings.theme
         appliedTheme = theme
         val night = when (theme) {
             AppSettings.Theme.SYSTEM -> return
@@ -35,8 +42,12 @@ abstract class ThemedActivity : ComponentActivity() {
         applyTheme()
     }
 
-    /** Recreates this screen if the theme it was made in is no longer the chosen one. */
+    /** Before Android 12, recreates this screen if the theme it was made in is no longer the chosen one. */
     fun applyTheme() {
-        if (AppSettings(this).theme != appliedTheme) recreate()
+        if (!SYSTEM_APPLIES_THEME && AppSettings(this).theme != appliedTheme) recreate()
+    }
+
+    private companion object {
+        val SYSTEM_APPLIES_THEME = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     }
 }

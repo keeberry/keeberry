@@ -20,7 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -121,7 +121,12 @@ internal fun StartScreen(
             val settings = stringResource(R.string.settings)
             Box(Modifier.align(Alignment.TopEnd).padding(4.dp)) {
                 WithTooltip(settings) {
-                    IconButton(onOpenSettings, shapes = IconButtonDefaults.shapes(), modifier = Modifier.testTag(TestTags.OPEN_SETTINGS)) {
+                    // Filled, so the round button stands out from the screen behind it.
+                    FilledTonalIconButton(
+                        onOpenSettings,
+                        shapes = IconButtonDefaults.shapes(),
+                        modifier = Modifier.testTag(TestTags.OPEN_SETTINGS),
+                    ) {
                         Icon(painterResource(R.drawable.ic_settings), settings)
                     }
                 }

@@ -7,6 +7,8 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -42,6 +44,7 @@ class StartScreenTest {
     fun forgetRecents() {
         context.getSharedPreferences("recent_vaults", Context.MODE_PRIVATE).edit().clear().commit()
         context.getSharedPreferences("settings", Context.MODE_PRIVATE).edit().clear().commit()
+        AppSettings(context).theme = AppSettings.Theme.SYSTEM
     }
 
     @Test
@@ -140,20 +143,30 @@ class StartScreenTest {
     @Test
     fun choosingAThemeShowsItRightAway() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            val device = scenario.nightMode()
+            val deviceDark = device == Configuration.UI_MODE_NIGHT_YES
             compose.onNodeWithTag(TestTags.OPEN_SETTINGS).performClick()
-            compose.onNodeWithTag(TestTags.theme(AppSettings.Theme.SYSTEM)).assertIsOn()
-            for ((theme, night) in listOf(
-                AppSettings.Theme.DARK to Configuration.UI_MODE_NIGHT_YES,
-                AppSettings.Theme.LIGHT to Configuration.UI_MODE_NIGHT_NO,
-            )) {
-                compose.onNodeWithTag(TestTags.theme(theme)).performClick()
-                compose.waitUntil(10_000) { scenario.nightMode() == night }
-                // Recreated in the new theme, still in Settings.
-                compose.onNodeWithTag(TestTags.theme(theme)).assertIsOn()
-            }
-            assertEquals(AppSettings.Theme.LIGHT, AppSettings(context).theme)
+            // Matching the device, the switch shows the device's theme.
+            compose.onNodeWithTag(TestTags.DARK_THEME_SWITCH).assertIs(deviceDark)
+
+            compose.onNodeWithTag(TestTags.DARK_THEME_SWITCH).performClick()
+            assertEquals(if (deviceDark) AppSettings.Theme.LIGHT else AppSettings.Theme.DARK, AppSettings(context).theme)
+            compose.waitUntil(10_000) { scenario.nightMode() != device }
+            // Recreated in the other theme, still in Settings.
+            compose.onNodeWithTag(TestTags.DARK_THEME_SWITCH).assertIs(!deviceDark)
+
+            compose.onNodeWithTag(TestTags.DARK_THEME).performClick()
+            compose.onNodeWithTag(TestTags.USE_DARK_THEME).assertIs(!deviceDark)
+            compose.onNodeWithTag(TestTags.MATCH_DEVICE).assertIsOff().performClick()
+            assertEquals(AppSettings.Theme.SYSTEM, AppSettings(context).theme)
+            compose.waitUntil(10_000) { scenario.nightMode() == device }
+            // Still on the dark theme page.
+            compose.onNodeWithTag(TestTags.MATCH_DEVICE).assertIsOn()
+            compose.onNodeWithTag(TestTags.USE_DARK_THEME).assertIs(deviceDark)
         }
     }
+
+    private fun SemanticsNodeInteraction.assertIs(on: Boolean) = if (on) assertIsOn() else assertIsOff()
 
     private fun ActivityScenario<MainActivity>.nightMode(): Int {
         var mode = 0

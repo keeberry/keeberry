@@ -3,6 +3,7 @@ package app.keeberry
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -31,6 +32,7 @@ import app.keeberry.kdbx.NativeArgon2
 import app.keeberry.ui.TestTags
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -368,15 +370,22 @@ class DatabaseScreenTest {
     }
 
     @Test
-    fun changingTheThemeKeepsTheDatabaseOpen() = withDatabase {
+    fun changingTheThemeKeepsTheDatabaseOpen() = withDatabase { scenario ->
         val settings = AppSettings(context)
+        fun nightMode(): Int {
+            var mode = 0
+            scenario.onActivity { mode = it.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK }
+            return mode
+        }
         try {
             unlock()
+            val device = nightMode()
             compose.onNodeWithTag(TestTags.MORE_OPTIONS).performClick()
             compose.onNodeWithTag(TestTags.OPEN_SETTINGS).performClick()
-            compose.onNodeWithTag(TestTags.theme(AppSettings.Theme.DARK)).performClick()
-            assertEquals(AppSettings.Theme.DARK, settings.theme)
-            compose.waitForIdle()
+            compose.onNodeWithTag(TestTags.DARK_THEME_SWITCH).performClick()
+            assertNotEquals(AppSettings.Theme.SYSTEM, settings.theme)
+            compose.waitUntil(10_000) { nightMode() != device }
+            compose.onNodeWithTag(TestTags.DARK_THEME_SWITCH).assertExists()
             Espresso.pressBack()
             compose.onNodeWithText("Second entry").assertIsDisplayed()
         } finally {
