@@ -20,8 +20,23 @@ internal class SettingsViewModel(application: Application) : AndroidViewModel(ap
         private set
     var theme by mutableStateOf(settings.theme)
         private set
+    /** The font the screen is set in, which changes as soon as another is chosen. */
+    var font by mutableStateOf(settings.font)
+        private set
 
-    val state get() = SettingsState(theme, recentLimit)
+    val state get() = SettingsState(theme, font, recentLimit)
+
+    /** Picks up changes made from another screen's settings, such as an open database's. */
+    fun reload() {
+        theme = settings.theme
+        font = settings.font
+        recentLimit = settings.recentLimit
+    }
+
+    fun changeFont(font: AppSettings.Font) {
+        settings.font = font
+        this.font = font
+    }
 
     /** Saves [theme]; [ThemedActivity.applyTheme] then shows it. */
     fun changeTheme(theme: AppSettings.Theme) {

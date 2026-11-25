@@ -40,9 +40,11 @@ class MainActivity : ThemedActivity() {
         settings = ViewModelProvider(this)[SettingsViewModel::class.java]
         enableEdgeToEdge()
         setContent {
-            KeeBerryTheme {
+            KeeBerryTheme(settings.font) {
                 // The database screen can't change the list, but a provider can revoke access meanwhile.
+                // Its settings can change the font and how many databases to remember.
                 LifecycleResumeEffect(Unit) {
+                    settings.reload()
                     model.refreshRecents()
                     onPauseOrDispose {}
                 }
@@ -64,6 +66,7 @@ class MainActivity : ThemedActivity() {
                             settings.changeTheme(it)
                             applyTheme()
                         },
+                        onFontChange = settings::changeFont,
                         onRecentLimitChange = {
                             settings.changeRecentLimit(it)
                             model.refreshRecents()

@@ -202,7 +202,8 @@ internal fun DatabaseScreen(
         LaunchedEffect(browser.showingBin) { if (!browser.showingBin) browserState.removeState("bin") }
         when {
             settings != null -> SettingsScreen(
-                settings, settingsActions.onClose, settingsActions.onThemeChange, settingsActions.onRecentLimitChange,
+                settings, settingsActions.onClose, settingsActions.onThemeChange, settingsActions.onFontChange,
+                settingsActions.onRecentLimitChange,
             )
             keyChange != null -> ChangeMasterKeyScreen(keyChange, keyActions)
             editor != null -> EntryEditorScreen(editor, onSave = onSaveEntry, onDiscard = onDiscardEntry)
@@ -289,6 +290,7 @@ internal class SettingsActions(
     val onOpen: () -> Unit = {},
     val onClose: () -> Unit = {},
     val onThemeChange: (AppSettings.Theme) -> Unit = {},
+    val onFontChange: (AppSettings.Font) -> Unit = {},
     val onRecentLimitChange: (Int) -> Unit = {},
 )
 

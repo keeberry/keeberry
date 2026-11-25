@@ -38,9 +38,19 @@ internal class AppSettings(context: Context) {
         app.getSystemService(UiModeManager::class.java)?.setApplicationNightMode(mode)
     }
 
+    /** The typeface every screen sets its text in. */
+    var font: Font
+        get() = Font.entries.firstOrNull { it.name == preferences.getString(FONT, null) } ?: DEFAULT_FONT
+        set(value) = preferences.edit { putString(FONT, value.name) }
+
     enum class Theme { SYSTEM, LIGHT, DARK }
 
+    /** The fonts KeeBerry bundles, in the order Settings lists them. */
+    enum class Font { GOOGLE_SANS_FLEX, INTER, ROBOTO }
+
     companion object {
+        val DEFAULT_FONT = Font.GOOGLE_SANS_FLEX
+        private const val FONT = "font"
         val RECENT_LIMITS = 1..10
         const val DEFAULT_RECENT_LIMIT = 5
         private const val RECENT_LIMIT = "recent_limit"

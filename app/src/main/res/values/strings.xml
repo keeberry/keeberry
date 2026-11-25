@@ -124,6 +124,10 @@
     <string name="theme_on">On</string>
     <string name="theme_device">Use device theme</string>
     <string name="theme_options">Options</string>
+    <string name="font">Font</string>
+    <string name="font_google_sans_flex" translatable="false">Google Sans Flex</string>
+    <string name="font_inter" translatable="false">Inter</string>
+    <string name="font_roboto" translatable="false">Roboto</string>
     <string name="settings_recent_limit">Databases to remember</string>
     <plurals name="settings_recent_limit_summary">
         <item quantity="one">The start screen offers the last database you opened. Lowering this forgets the others.</item>

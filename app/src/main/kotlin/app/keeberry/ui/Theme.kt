@@ -21,18 +21,21 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
+import app.keeberry.AppSettings
 import app.keeberry.R
 
 /**
- * Material 3 Expressive, with Material You colors from Android 12 and KeeBerry's indigo before that.
- * The expressive theme gives buttons, lists and toggles their shape-morphing and springy motion.
+ * Material 3 Expressive, with Material You colors from Android 12 and KeeBerry's indigo before that,
+ * and text set in [font]. The expressive theme gives buttons, lists and toggles their shape-morphing
+ * and springy motion.
  */
 @Composable
-internal fun KeeBerryTheme(content: @Composable () -> Unit) {
+internal fun KeeBerryTheme(font: AppSettings.Font = AppSettings.DEFAULT_FONT, content: @Composable () -> Unit) {
     val dark = isSystemInDarkTheme()
     val colors = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         val context = LocalContext.current
@@ -56,7 +59,12 @@ internal fun KeeBerryTheme(content: @Composable () -> Unit) {
             outline = colorResource(R.color.outline),
         )
     }
-    MaterialExpressiveTheme(colorScheme = colors, motionScheme = MotionScheme.expressive(), content = content)
+    MaterialExpressiveTheme(
+        colorScheme = colors,
+        motionScheme = MotionScheme.expressive(),
+        typography = remember(font) { typography(font) },
+        content = content,
+    )
 }
 
 /**
@@ -135,6 +143,9 @@ internal object TestTags {
     const val DARK_THEME = "dark_theme_item"
     const val DARK_THEME_SWITCH = "dark_theme_switch"
     const val DARK_THEME_PAGE = "dark_theme_page"
+    const val FONT = "font_item"
+    const val FONT_PAGE = "font_page"
     fun themeOption(name: String) = "theme_option_${name.lowercase()}"
+    fun fontOption(name: String) = "font_option_${name.lowercase()}"
 }
 

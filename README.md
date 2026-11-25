@@ -109,6 +109,8 @@ KeeBerry is licensed under the [GNU General Public License v3.0](LICENSE).
 It includes the [Argon2 reference implementation](app/src/main/cpp/argon2), used under CC0 1.0 or
 Apache 2.0, and depends on [Bouncy Castle](https://www.bouncycastle.org/) (MIT license),
 [Yubico YubiKit](https://github.com/Yubico/yubikit-android) and Android Jetpack (Apache 2.0).
+It bundles the Google Sans Flex, Inter and Roboto fonts, used under the SIL Open Font License 1.1;
+their licenses are in [`app/src/main/assets/licenses`](app/src/main/assets/licenses).
 
 KeeBerry is an independent project and isn't affiliated with KeePass or Yubico.
 YubiKey is a trademark of Yubico AB.

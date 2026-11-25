@@ -56,8 +56,10 @@ class CreateDatabaseActivity : ThemedActivity() {
         enableEdgeToEdge()
         // After a configuration change the model may still be waiting for a YubiKey.
         model.attach(this)
+        // Settings can't be changed from here, so the font is read once.
+        val font = AppSettings(this).font
         setContent {
-            KeeBerryTheme {
+            KeeBerryTheme(font) {
                 val created = model.created
                 LaunchedEffect(created) {
                     if (created == null) return@LaunchedEffect

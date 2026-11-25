@@ -65,7 +65,7 @@ class DatabaseActivity : ThemedActivity() {
         model.attach(this)
         val fileName = intent.getStringExtra(EXTRA_DISPLAY_NAME)
         setContent {
-            KeeBerryTheme {
+            KeeBerryTheme(settings.font) {
                 DatabaseScreen(
                     fileName = fileName,
                     unlock = UnlockState(
@@ -132,6 +132,7 @@ class DatabaseActivity : ThemedActivity() {
                             settings.changeTheme(it)
                             applyTheme()
                         },
+                        onFontChange = settings::changeFont,
                         onRecentLimitChange = settings::changeRecentLimit,
                     ),
                 )

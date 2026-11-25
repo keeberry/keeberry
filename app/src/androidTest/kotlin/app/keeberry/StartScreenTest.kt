@@ -169,6 +169,21 @@ class StartScreenTest {
         }
     }
 
+    @Test
+    fun choosingAFontKeepsIt() {
+        ActivityScenario.launch(MainActivity::class.java).use {
+            compose.onNodeWithTag(TestTags.OPEN_SETTINGS).performClick()
+            compose.onNodeWithTag(TestTags.FONT).assert(hasText(context.getString(R.string.font_google_sans_flex))).performClick()
+            compose.onNodeWithTag(TestTags.fontOption("GOOGLE_SANS_FLEX")).assertIsSelected()
+            compose.onNodeWithTag(TestTags.fontOption("ROBOTO")).assertIsNotSelected().performClick()
+            assertEquals(AppSettings.Font.ROBOTO, AppSettings(context).font)
+            compose.onNodeWithTag(TestTags.fontOption("ROBOTO")).assertIsSelected()
+            compose.onNodeWithTag(TestTags.fontOption("GOOGLE_SANS_FLEX")).assertIsNotSelected()
+            Espresso.pressBack()
+            compose.onNodeWithTag(TestTags.FONT).assert(hasText(context.getString(R.string.font_roboto)))
+        }
+    }
+
     private fun SemanticsNodeInteraction.assertIs(on: Boolean) = if (on) assertIsOn() else assertIsOff()
 
     private fun ActivityScenario<MainActivity>.nightMode(): Int {

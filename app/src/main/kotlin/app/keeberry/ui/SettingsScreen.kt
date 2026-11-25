@@ -69,31 +69,45 @@ import app.keeberry.R
 import kotlin.math.roundToInt
 
 /** What the settings screen shows, kept apart from where it comes from so tests and previews can supply it. */
-internal class SettingsState(val theme: AppSettings.Theme, val recentLimit: Int)
+internal class SettingsState(val theme: AppSettings.Theme, val font: AppSettings.Font, val recentLimit: Int)
+
+/** Settings' own pages, which open from a row on the main one. */
+private enum class SettingsPage { DARK_THEME, FONT }
 
 /**
  * App-wide settings, reachable from the start screen and from an open database. Settings are grouped
  * into titled sections of segmented list items, under a large app bar that collapses as it scrolls,
  * and laid out like Android's own settings: bright groups on a container-colored screen. The dark
- * mode row opens a page of its own, as it does in the system's display settings.
+ * mode and font rows open pages of their own, as they do in the system's display settings.
  */
 @Composable
 internal fun SettingsScreen(
     state: SettingsState,
     onBack: () -> Unit,
     onThemeChange: (AppSettings.Theme) -> Unit,
+    onFontChange: (AppSettings.Font) -> Unit,
     onRecentLimitChange: (Int) -> Unit,
 ) {
     // Saved, so the page is still open after a theme change recreates the screen.
-    var darkThemeOpen by rememberSaveable { mutableStateOf(false) }
-    if (darkThemeOpen) {
-        DarkThemeScreen(state.theme, onBack = { darkThemeOpen = false }, onThemeChange)
-        return
+    var page by rememberSaveable { mutableStateOf<SettingsPage?>(null) }
+    val closePage = { page = null }
+    when (page) {
+        SettingsPage.DARK_THEME -> return DarkThemeScreen(state.theme, onBack = closePage, onThemeChange)
+        SettingsPage.FONT -> return FontScreen(state.font, onBack = closePage, onFontChange)
+        null -> {}
     }
     SettingsScaffold(R.string.settings, onBack, Modifier.testTag(TestTags.SETTINGS)) {
         item {
             SettingsSection(R.string.settings_appearance) {
-                DarkModeItem(state.theme, onOpen = { darkThemeOpen = true }, onThemeChange)
+                DarkModeItem(state.theme, onOpen = { page = SettingsPage.DARK_THEME }, onThemeChange)
+                SettingsItem(
+                    headline = stringResource(R.string.font),
+                    value = stringResource(state.font.label),
+                    onClick = { page = SettingsPage.FONT },
+                    index = 1,
+                    count = 2,
+                    modifier = Modifier.testTag(TestTags.FONT),
+                )
             }
         }
         item {
@@ -188,6 +202,7 @@ private fun DarkModeItem(theme: AppSettings.Theme, onOpen: () -> Unit, onChange:
         headline = title,
         value = stringResource(theme.label),
         onClick = onOpen,
+        count = 2,
         modifier = Modifier.testTag(TestTags.DARK_THEME),
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -252,6 +267,33 @@ private fun DarkThemeScreen(theme: AppSettings.Theme, onBack: () -> Unit, onChan
                         modifier = Modifier.testTag(TestTags.themeOption(option.name)),
                         leadingContent = { RadioButton(selected = option == theme, onClick = null) },
                     )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The font page: each font as a radio preference, its row set in that font so it shows what it
+ * looks like before it's chosen.
+ */
+@Composable
+private fun FontScreen(font: AppSettings.Font, onBack: () -> Unit, onChange: (AppSettings.Font) -> Unit) {
+    SettingsScaffold(R.string.font, onBack, Modifier.testTag(TestTags.FONT_PAGE)) {
+        item {
+            SettingsSection(R.string.theme_options, Modifier.selectableGroup()) {
+                AppSettings.Font.entries.forEachIndexed { index, option ->
+                    MaterialTheme(typography = remember(option) { typography(option) }) {
+                        SettingsItem(
+                            headline = stringResource(option.label),
+                            onClick = { if (option != font) onChange(option) },
+                            index = index,
+                            count = AppSettings.Font.entries.size,
+                            selected = option == font,
+                            modifier = Modifier.testTag(TestTags.fontOption(option.name)),
+                            leadingContent = { RadioButton(selected = option == font, onClick = null) },
+                        )
+                    }
                 }
             }
         }
@@ -360,8 +402,14 @@ private fun RecentLimitItem(limit: Int, onChange: (Int) -> Unit) {
 }
 
 @Composable
-private fun SettingsPreview(theme: AppSettings.Theme = AppSettings.Theme.SYSTEM, limit: Int = AppSettings.DEFAULT_RECENT_LIMIT) {
-    KeeBerryTheme { SettingsScreen(SettingsState(theme, limit), onBack = {}, onThemeChange = {}, onRecentLimitChange = {}) }
+private fun SettingsPreview(
+    theme: AppSettings.Theme = AppSettings.Theme.SYSTEM,
+    font: AppSettings.Font = AppSettings.DEFAULT_FONT,
+    limit: Int = AppSettings.DEFAULT_RECENT_LIMIT,
+) {
+    KeeBerryTheme(font) {
+        SettingsScreen(SettingsState(theme, font, limit), onBack = {}, onThemeChange = {}, onFontChange = {}, onRecentLimitChange = {})
+    }
 }
 
 @ScreenPreviews
@@ -370,10 +418,16 @@ private fun SettingsScreenPreview() = SettingsPreview()
 
 @Preview(name = "Dark theme, one database", showSystemUi = true, uiMode = Configuration.UI_MODE_NIGHT_YES or Configuration.UI_MODE_TYPE_NORMAL)
 @Composable
-private fun SettingsOneRecentPreview() = SettingsPreview(theme = AppSettings.Theme.DARK, limit = 1)
+private fun SettingsOneRecentPreview() = SettingsPreview(theme = AppSettings.Theme.DARK, font = AppSettings.Font.INTER, limit = 1)
 
 @ScreenPreviews
 @Composable
 private fun DarkThemeScreenPreview() {
     KeeBerryTheme { DarkThemeScreen(AppSettings.Theme.SYSTEM, onBack = {}, onChange = {}) }
+}
+
+@ScreenPreviews
+@Composable
+private fun FontScreenPreview() {
+    KeeBerryTheme { FontScreen(AppSettings.DEFAULT_FONT, onBack = {}, onChange = {}) }
 }
