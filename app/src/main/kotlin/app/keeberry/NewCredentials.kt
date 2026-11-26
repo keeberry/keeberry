@@ -10,7 +10,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.keeberry.kdbx.writeKeyFile
-import com.yubico.yubikit.yubiotp.Slot
 import java.io.IOException
 
 /**
@@ -28,7 +27,6 @@ internal class NewCredentials(private val onChange: () -> Unit = {}) {
         private set
     var useYubiKey by mutableStateOf(false)
         private set
-    var slotOne by mutableStateOf(false)
     var keyUri by mutableStateOf<Uri?>(null)
         private set
     var keyName by mutableStateOf<String?>(null)
@@ -38,9 +36,6 @@ internal class NewCredentials(private val onChange: () -> Unit = {}) {
     val hasOtherCredential: Boolean get() = keyUri != null || useYubiKey
 
     val showsPassword: Boolean get() = !hasOtherCredential || usePassword
-
-    /** The YubiKey slot to challenge, or null without a YubiKey. */
-    val slot: Slot? get() = if (!useYubiKey) null else if (slotOne) Slot.ONE else Slot.TWO
 
     fun onUsePasswordChanged(checked: Boolean) {
         usePassword = checked

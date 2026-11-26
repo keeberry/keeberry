@@ -35,7 +35,7 @@ running Android 9 or later.
   combination of them, and can generate a new key file for you
 - Unlocks with a master password, a key file, a YubiKey, or any combination of them
 - Changes the master key of an open database to a new combination of password, key file and YubiKey
-- YubiKey HMAC-SHA1 challenge-response on slot 1 or slot 2, over NFC or USB
+- YubiKey HMAC-SHA1 challenge-response over NFC or USB, with the slot found on its own and remembered for each database
 - Key files in XML (`.keyx` and `.key`), 64-character hex, or any other file
 - Searches entries by title, group, username, URL and notes
 - Adds, edits and deletes entries, including custom fields with hidden values and groups

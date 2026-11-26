@@ -54,10 +54,10 @@ class CreateDatabaseScreenTest {
     }
 
     @Test
-    fun offersAYubiKeySlotAndLetsThePasswordGoNextToIt() {
+    fun offersAYubiKeyWithoutASlotAndLetsThePasswordGoNextToIt() {
         ActivityScenario.launch(CreateDatabaseActivity::class.java).use {
             compose.onNodeWithTag(TestTags.USE_YUBIKEY).performScrollTo().performClick()
-            compose.onNodeWithText(context.getString(R.string.database_yubikey_slot_two)).performScrollTo().assertIsDisplayed()
+            compose.onAllNodes(hasText("Slot 2")).assertCountEquals(0)
             compose.onNodeWithText(context.getString(R.string.create_database_yubikey_hint)).performScrollTo().assertIsDisplayed()
             compose.onNodeWithText(context.getString(R.string.database_use_password)).performScrollTo().performClick()
             compose.onAllNodes(hasTestTag(TestTags.NEW_PASSWORD)).assertCountEquals(0)

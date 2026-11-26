@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.KeyboardActionHandler
@@ -22,7 +21,6 @@ import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.TextObfuscationMode
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -35,7 +33,6 @@ import androidx.compose.material3.OutlinedSecureTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -50,7 +47,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -138,30 +134,6 @@ internal fun CheckboxRow(label: Int, checked: Boolean, enabled: Boolean, onChang
     }
 }
 
-/** Which challenge-response slot of the YubiKey to use: slot 1 when [slotOne], else slot 2. */
-@Composable
-internal fun SlotChoice(slotOne: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
-    val slots = listOf(R.string.database_yubikey_slot_one to true, R.string.database_yubikey_slot_two to false)
-    Row(
-        Modifier.fillMaxWidth().padding(top = 4.dp).selectableGroup(),
-        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
-    ) {
-        slots.forEachIndexed { index, (label, one) ->
-            ToggleButton(
-                checked = slotOne == one,
-                // Tapping the chosen slot keeps it chosen, like a radio button.
-                onCheckedChange = { onChange(one) },
-                modifier = Modifier.weight(1f).semantics { role = Role.RadioButton },
-                enabled = enabled,
-                shapes = if (index == 0) ButtonGroupDefaults.connectedLeadingButtonShapes()
-                else ButtonGroupDefaults.connectedTrailingButtonShapes(),
-            ) {
-                Text(stringResource(label))
-            }
-        }
-    }
-}
-
 /**
  * A full-screen form that asks for new credentials: [title] in the bar, [description] above the
  * fields, anything [header] adds below it, and a button labelled [action] that runs [onAction].
@@ -240,7 +212,7 @@ internal fun NewCredentialsScreen(
 
 /**
  * The fields for new credentials: the master password twice, unless another credential lets it
- * be left out, a key file that can be chosen or created, and a YubiKey slot.
+ * be left out, a key file that can be chosen or created, and a YubiKey.
  */
 @Composable
 private fun NewCredentialsFields(
@@ -271,7 +243,6 @@ private fun NewCredentialsFields(
         Modifier.testTag(TestTags.USE_YUBIKEY),
     )
     if (credentials.useYubiKey) {
-        SlotChoice(credentials.slotOne, enabled = enabled) { credentials.slotOne = it }
         Text(
             stringResource(R.string.create_database_yubikey_hint),
             Modifier.padding(top = 4.dp),

@@ -34,7 +34,6 @@ import app.keeberry.kdbx.GroupMissingException
 import app.keeberry.kdbx.KdbxKey
 import app.keeberry.kdbx.KdbxSaver
 import app.keeberry.kdbx.hexString
-import com.yubico.yubikit.yubiotp.Slot
 import java.io.ByteArrayOutputStream
 import java.io.FileNotFoundException
 import java.io.IOException
@@ -61,7 +60,6 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
         private set
     var useYubiKey by mutableStateOf(false)
         private set
-    var slotOne by mutableStateOf(false)
     var keyUri by mutableStateOf<Uri?>(null)
         private set
     var keyName by mutableStateOf<String?>(null)
@@ -147,11 +145,12 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
         val withYubiKey = useYubiKey
         val pass = if (showsPassword) password.text.let { text -> CharArray(text.length) { text[it] } } else null
         password.clearText()
-        val slot = if (!withYubiKey) null else if (slotOne) Slot.ONE else Slot.TWO
         val signal = CancellationSignal()
         lateinit var job: Job
-        val hardware = slot?.let {
-            YubiKeyChallenge(getApplication(), it, R.string.database_unlocking) { prompt ->
+        val hardware = if (!withYubiKey) null else {
+            val preferred = RecentDatabases(getApplication()).yubiKey(databaseUri)
+            // Until a slot is known to work, both are asked, so either can unlock.
+            YubiKeyChallenge(getApplication(), preferred, R.string.database_unlocking, keepAlternate = preferred == null) { prompt ->
                 if (job.isActive) progress = Progress(prompt, null)
             }
         }
@@ -198,11 +197,11 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
                 hardware?.close()
             }
             // Runs even after a cancel, so a database that arrives too late is still closed.
-            withContext(NonCancellable + Dispatchers.Main.immediate) { finish(job, result, withYubiKey) }
+            withContext(NonCancellable + Dispatchers.Main.immediate) { finish(job, result, withYubiKey, hardware?.used) }
         }
     }
 
-    private fun finish(job: Job, result: Result<Database>, withYubiKey: Boolean) {
+    private fun finish(job: Job, result: Result<Database>, withYubiKey: Boolean, yubiKey: YubiKeyChoice?) {
         if (!job.isActive || unlockJob !== job) {
             result.getOrNull()?.close()
             return
@@ -210,7 +209,9 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
         clearRequest()
         result.fold({
             database = it
-            writable = databaseUri?.let(::canWrite) == true
+            val uri = databaseUri
+            writable = uri?.let(::canWrite) == true
+            if (uri != null && yubiKey != null) RecentDatabases(getApplication()).rememberYubiKey(uri, yubiKey)
         }, { error = errorMessage(it, withYubiKey) })
     }
 
@@ -363,11 +364,12 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
         val key = database.key?.copy() ?: return
         val pass = form.credentials.passwordCopy()
         val keyFile = form.credentials.keyUri
-        val slot = form.credentials.slot
+        val withYubiKey = form.credentials.useYubiKey
         form.credentials.clearPasswords()
         lateinit var job: Job
-        val hardware = slot?.let {
-            YubiKeyChallenge(getApplication(), it, R.string.master_key_changing) { prompt ->
+        val hardware = if (!withYubiKey) null else {
+            val preferred = RecentDatabases(getApplication()).yubiKey(uri)
+            YubiKeyChallenge(getApplication(), preferred, R.string.master_key_changing) { prompt ->
                 if (form.job === job) form.progress = Progress(prompt, null)
             }
         }
@@ -386,7 +388,9 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
                     hardware?.close()
                 }
             }
-            withContext(NonCancellable + Dispatchers.Main.immediate) { finishKeyChange(database, form, job, result) }
+            withContext(NonCancellable + Dispatchers.Main.immediate) {
+                finishKeyChange(database, form, job, result, uri, hardware?.used)
+            }
         }
         form.job = job
         form.hardware = hardware
@@ -442,12 +446,21 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
         }
     }
 
-    private fun finishKeyChange(previous: Database, form: MasterKeyChange, job: Job, result: Result<Database>) {
+    private fun finishKeyChange(
+        previous: Database,
+        form: MasterKeyChange,
+        job: Job,
+        result: Result<Database>,
+        uri: Uri,
+        yubiKey: YubiKeyChoice?,
+    ) {
         if (saveJob === job) saveJob = null
         form.job = null
         form.hardware = null
         form.progress = null
         val changed = result.getOrNull()
+        // The file has the new key even if the database was locked meanwhile.
+        if (changed != null && yubiKey != null) RecentDatabases(getApplication()).rememberYubiKey(uri, yubiKey)
         // Locked while changing: if the file changed, nothing is shown any more.
         if (database !== previous) {
             changed?.close()
@@ -742,7 +755,14 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
                 }
             }
         }
-        return decoder.unlock({ openDocument(databaseUri, signal) }, pass, keyFile, hardware?.let { it::respond })
+        val database = { openDocument(databaseUri, signal) }
+        return try {
+            decoder.unlock(database, pass, keyFile, hardware?.let { it::respond })
+        } catch (error: KdbxException) {
+            // With both slots set up for challenge-response, the one asked first may hold another secret.
+            if (error.failure != KdbxFailure.CREDENTIALS || hardware?.hasAlternate != true) throw error
+            decoder.unlock(database, pass, keyFile) { challenge -> hardware.alternate(challenge) ?: throw error }
+        }
     }
 
     private fun openDocument(uri: Uri, signal: CancellationSignal): InputStream {

@@ -5,18 +5,19 @@ import android.content.Intent
 import android.net.Uri
 import androidx.core.content.edit
 import androidx.core.net.toUri
+import com.yubico.yubikit.yubiotp.Slot
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 
 /**
- * Databases opened before, newest first. Only the document link and its display name are stored, and
- * only for documents whose access the provider let KeeBerry keep across restarts. Write access is
- * kept too when the provider granted it, so changes can be saved later. How many are kept is
- * [AppSettings.recentLimit].
+ * Databases opened before, newest first. Only the document link, its display name and the YubiKey
+ * that last answered for it are stored, and only for documents whose access the provider let
+ * KeeBerry keep across restarts. Write access is kept too when the provider granted it, so changes
+ * can be saved later. How many are kept is [AppSettings.recentLimit].
  */
 internal class RecentDatabases(context: Context) {
-    class Recent(val uri: Uri, val name: String)
+    class Recent(val uri: Uri, val name: String, val yubiKey: YubiKeyChoice? = null)
 
     private val app = context.applicationContext
     private val settings = AppSettings(app)
@@ -32,8 +33,27 @@ internal class RecentDatabases(context: Context) {
         return (0 until stored.length()).mapNotNull { index ->
             val item = stored.optJSONObject(index) ?: return@mapNotNull null
             val uri = item.optString("uri").takeIf(String::isNotEmpty) ?: return@mapNotNull null
-            Recent(uri.toUri(), item.optString("name"))
+            Recent(uri.toUri(), item.optString("name"), yubiKeyOf(item))
         }
+    }
+
+    private fun yubiKeyOf(item: JSONObject): YubiKeyChoice? {
+        val slot = when (item.optInt(SLOT)) {
+            1 -> Slot.ONE
+            2 -> Slot.TWO
+            else -> return null
+        }
+        return YubiKeyChoice(if (item.has(SERIAL)) item.optInt(SERIAL) else null, slot)
+    }
+
+    /** The YubiKey and slot that last answered for [uri], if it is a recent database. */
+    fun yubiKey(uri: Uri): YubiKeyChoice? = list().firstOrNull { it.uri == uri }?.yubiKey
+
+    /** Remembers that [choice] answered for [uri], if it is a recent database, without moving it. */
+    fun rememberYubiKey(uri: Uri, choice: YubiKeyChoice) {
+        val recents = list()
+        if (recents.none { it.uri == uri && it.yubiKey != choice }) return
+        save(recents.map { if (it.uri == uri) Recent(it.uri, it.name, choice) else it })
     }
 
     /**
@@ -64,12 +84,17 @@ internal class RecentDatabases(context: Context) {
 
     fun contains(uri: Uri): Boolean = list().any { it.uri == uri }
 
-    /** Puts a database with kept access first, and forgets the oldest past the limit. */
-    fun add(uri: Uri, name: String) {
+    /**
+     * Puts a database with kept access first, and forgets the oldest past the limit. Without
+     * [yubiKey], the one remembered for it stays.
+     */
+    fun add(uri: Uri, name: String, yubiKey: YubiKeyChoice? = null) {
         val limit = settings.recentLimit
-        val others = list().filter { it.uri != uri }
+        val recents = list()
+        val others = recents.filter { it.uri != uri }
+        val remembered = yubiKey ?: recents.firstOrNull { it.uri == uri }?.yubiKey
         others.drop(limit - 1).forEach { release(it.uri) }
-        save(listOf(Recent(uri, name)) + others.take(limit - 1))
+        save(listOf(Recent(uri, name, remembered)) + others.take(limit - 1))
     }
 
     /** Changes how many databases are remembered, forgetting the oldest past the new limit. */
@@ -105,11 +130,20 @@ internal class RecentDatabases(context: Context) {
 
     private fun save(recents: List<Recent>) {
         val array = JSONArray()
-        recents.forEach { array.put(JSONObject().put("uri", it.uri.toString()).put("name", it.name)) }
+        recents.forEach { recent ->
+            val item = JSONObject().put("uri", recent.uri.toString()).put("name", recent.name)
+            recent.yubiKey?.let { key ->
+                item.put(SLOT, if (key.slot == Slot.ONE) 1 else 2)
+                key.serial?.let { item.put(SERIAL, it) }
+            }
+            array.put(item)
+        }
         preferences.edit { putString(KEY, array.toString()) }
     }
 
     private companion object {
         const val KEY = "recents"
+        const val SLOT = "yubikey_slot"
+        const val SERIAL = "yubikey_serial"
     }
 }

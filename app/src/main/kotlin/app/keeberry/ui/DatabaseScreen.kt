@@ -135,7 +135,6 @@ internal class UnlockState(
     val hasKeyFile: Boolean,
     val keyName: String?,
     val useYubiKey: Boolean,
-    val slotOne: Boolean,
     val error: Int?,
     val progress: DatabaseViewModel.Progress?,
 )
@@ -173,7 +172,6 @@ internal fun DatabaseScreen(
     onRemoveKeyFile: () -> Unit,
     onUsePasswordChange: (Boolean) -> Unit,
     onUseYubiKeyChange: (Boolean) -> Unit,
-    onSlotOneChange: (Boolean) -> Unit,
     onSavedEntryShown: () -> Unit,
     onNewEntry: () -> Unit,
     onEditEntry: (Int) -> Unit,
@@ -241,7 +239,6 @@ internal fun DatabaseScreen(
             onRemoveKeyFile = onRemoveKeyFile,
             onUsePasswordChange = onUsePasswordChange,
             onUseYubiKeyChange = onUseYubiKeyChange,
-            onSlotOneChange = onSlotOneChange,
             modifier = Modifier.padding(padding).consumeWindowInsets(padding).imePadding(),
         )
     }
@@ -616,7 +613,6 @@ private fun UnlockForm(
     onRemoveKeyFile: () -> Unit,
     onUsePasswordChange: (Boolean) -> Unit,
     onUseYubiKeyChange: (Boolean) -> Unit,
-    onSlotOneChange: (Boolean) -> Unit,
     modifier: Modifier,
 ) {
     val progress = state.progress
@@ -647,7 +643,6 @@ private fun UnlockForm(
                 if (state.showsPassword) PasswordField(state.password, enabled = !unlocking, onUnlock)
                 KeyFileChoice(state.keyName, state.hasKeyFile, enabled = !unlocking, onPickKeyFile, onRemoveKeyFile)
                 CheckboxRow(R.string.database_use_yubikey, state.useYubiKey, !unlocking, onUseYubiKeyChange)
-                if (state.useYubiKey) SlotChoice(state.slotOne, enabled = !unlocking, onSlotOneChange)
                 state.error?.let {
                     Text(
                         stringResource(it),
@@ -1115,7 +1110,6 @@ private fun previewUnlock(
     hasKeyFile = hasKeyFile,
     keyName = if (hasKeyFile) "personal.keyx" else null,
     useYubiKey = useYubiKey,
-    slotOne = false,
     error = error,
     progress = progress,
 )
@@ -1151,7 +1145,6 @@ private fun DatabasePreview(unlock: UnlockState = previewUnlock(), browser: Brow
             onRemoveKeyFile = {},
             onUsePasswordChange = {},
             onUseYubiKeyChange = {},
-            onSlotOneChange = {},
             onSavedEntryShown = {},
             onNewEntry = {},
             onEditEntry = {},

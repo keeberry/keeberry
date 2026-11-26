@@ -95,11 +95,11 @@ internal class CreateDatabaseViewModel(application: Application) : AndroidViewMo
         val title = databaseName
         val pass = credentials.passwordCopy()
         val key = credentials.keyUri
-        val slot = credentials.slot
+        val withYubiKey = credentials.useYubiKey
         credentials.clearPasswords()
         lateinit var job: Job
-        val hardware = slot?.let {
-            YubiKeyChallenge(getApplication(), it, R.string.create_database_creating) { prompt ->
+        val hardware = if (!withYubiKey) null else {
+            YubiKeyChallenge(getApplication(), preferred = null, R.string.create_database_creating) { prompt ->
                 if (job.isActive && createJob === job) progress = DatabaseViewModel.Progress(prompt, null)
             }
         }
@@ -133,7 +133,7 @@ internal class CreateDatabaseViewModel(application: Application) : AndroidViewMo
         val result = withContext(NonCancellable + kdfDispatcher) {
             try {
                 write(job, uri, title, pass, key, hardware)
-                Result.success(keep(uri, pickFlags, title))
+                Result.success(keep(uri, pickFlags, title, hardware?.used))
             } catch (error: Exception) {
                 // A half-written or empty file is no use to anyone, including after a cancel.
                 delete(uri)
@@ -173,12 +173,12 @@ internal class CreateDatabaseViewModel(application: Application) : AndroidViewMo
         throw KdbxException(KdbxFailure.KEY_FILE)
     }
 
-    private fun keep(uri: Uri, pickFlags: Int, title: String): Created {
+    private fun keep(uri: Uri, pickFlags: Int, title: String, yubiKey: YubiKeyChoice?): Created {
         val app = getApplication<Application>()
         // The provider may have changed the suggested file name, for example to avoid a clash.
         val name = app.documentName(uri) ?: "$title.kdbx"
         val recents = RecentDatabases(app)
-        if (recents.keepAccess(uri, pickFlags)) recents.add(uri, name)
+        if (recents.keepAccess(uri, pickFlags)) recents.add(uri, name, yubiKey)
         return Created(uri, name)
     }
 

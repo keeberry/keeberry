@@ -13,15 +13,14 @@
     <string name="database_change_key_file">Change key file</string>
     <string name="database_remove_key_file">Remove key file</string>
     <string name="database_use_yubikey">Use YubiKey</string>
-    <string name="database_yubikey_slot_one">Slot 1</string>
-    <string name="database_yubikey_slot_two">Slot 2</string>
     <string name="database_yubikey_waiting">Connect or tap YubiKey…</string>
     <string name="database_yubikey_touch">Touch your YubiKey…</string>
     <string name="database_yubikey_timeout">No YubiKey responded. Check the USB connection or hold your key to the phone’s NFC reader.</string>
     <string name="database_yubikey_nfc_off">NFC is off. Turn it on in Quick Settings to tap your YubiKey, or connect it by USB…</string>
     <string name="database_yubikey_nfc_off_only">NFC is off. Turn it on in Quick Settings, then tap your YubiKey…</string>
     <string name="database_yubikey_unavailable">This device has no NFC or USB host support for a YubiKey.</string>
-    <string name="database_yubikey_failed">Couldn’t read the YubiKey. Check the challenge-response slot and keep the key connected.</string>
+    <string name="database_yubikey_failed">Couldn’t read the YubiKey. Keep it connected, or hold it to the phone until it answers.</string>
+    <string name="database_yubikey_no_slot">This YubiKey has no HMAC-SHA1 challenge-response slot. Set one up with YubiKey Manager first.</string>
     <string name="database_unlocking">Unlocking…</string>
     <string name="database_unlock_opening">Opening database…</string>
     <string name="database_unlock_deriving">Deriving the encryption key…</string>
@@ -29,7 +28,7 @@
     <string name="database_unlock_percent">%1$d%%</string>
     <string name="database_unlock_cancel">Cancel</string>
     <string name="database_credentials_error">Couldn’t unlock the database. Check the master password and key file.</string>
-    <string name="database_credentials_yubikey_error">Couldn’t unlock the database. Check the YubiKey slot and your other unlock credentials.</string>
+    <string name="database_credentials_yubikey_error">Couldn’t unlock the database. Check that it’s the right YubiKey, and your other unlock credentials.</string>
     <string name="database_corrupt_error">This database is damaged or incomplete.</string>
     <string name="database_unsupported_error">This database uses an unsupported KDBX version or encryption setting.</string>
     <string name="database_key_file_error">The selected key file is unreadable or invalid.</string>
@@ -148,7 +147,7 @@
     <string name="create_database_new_key_file">New key file</string>
     <string name="create_database_key_file_save_error">Couldn’t save the key file there. Choose a location you can write to.</string>
     <string name="create_database_key_file_warning">Keep a copy of this key file somewhere other than the database. Without it, the database can’t be opened.</string>
-    <string name="create_database_yubikey_hint">Uses the HMAC-SHA1 challenge-response in this slot. You’ll connect the key after choosing where to save. Without it, or a backup key with the same secret, the database can’t be opened.</string>
+    <string name="create_database_yubikey_hint">Uses the key’s HMAC-SHA1 challenge-response slot, or slot 2 if both are set up. You’ll connect the key after choosing where to save. Without it, or a backup key with the same secret, the database can’t be opened.</string>
     <string name="create_database_creating">Creating…</string>
     <string name="create_database_error">Couldn’t save the database there. Choose a location you can write to.</string>
     <string name="create_database_memory_error">Not enough free memory to create a database right now. Close other apps and try again.</string>
