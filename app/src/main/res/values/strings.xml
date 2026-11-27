@@ -51,6 +51,8 @@
     <string name="recent_remove_title">Remove from recent databases?</string>
     <string name="recent_remove_message">KeeBerry will forget %1$s. The file itself isn’t changed.</string>
     <string name="recent_remove">Remove</string>
+    <string name="recent_unavailable_message">Couldn’t open %1$s. It may have been moved, renamed or deleted, or its storage isn’t available right now.</string>
+    <string name="recent_unavailable_remove">Remove from recent</string>
     <string name="cancel">Cancel</string>
     <string name="database_key_file_chosen">Key file: %1$s</string>
     <string name="database_show_password">Show password</string>

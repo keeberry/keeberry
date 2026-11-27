@@ -74,12 +74,19 @@ class MainActivity : ThemedActivity() {
                     )
                 } else {
                     StartScreen(
-                        state = StartState(model.recentDatabases, model.checking, model.message, model.created),
+                        state = StartState(
+                            model.recentDatabases,
+                            model.checking,
+                            model.message,
+                            model.created,
+                            model.unavailable,
+                        ),
                         onOpenDatabase = ::pickDatabase,
                         onCreateDatabase = ::startCreating,
                         onRecent = model::onRecentChosen,
                         onRemoveRecent = model::removeRecent,
                         onDismissMessage = { model.message = null },
+                        onDismissUnavailable = { model.unavailable = null },
                         onDismissCreated = { model.created = null },
                         onOpenSettings = { settings.showing = true },
                     )

@@ -30,6 +30,8 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
     var checking by mutableStateOf(false)
         private set
     var message by mutableStateOf<Int?>(null)
+    /** A recent database that couldn't be read, for example because it was deleted, until dismissed. */
+    var unavailable by mutableStateOf<RecentDatabases.Recent?>(null)
     var openRequest by mutableStateOf<OpenRequest?>(null)
         private set
     /** The file name of a database just created, until its confirmation is dismissed. */
@@ -42,9 +44,10 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
     /** A document from the picker, whose access is kept for the recent list when the provider allows. */
     fun onPicked(uri: Uri, pickFlags: Int) = check(uri, recents.keepAccess(uri, pickFlags))
 
-    fun onRecentChosen(recent: RecentDatabases.Recent) = check(recent.uri, kept = true)
+    fun onRecentChosen(recent: RecentDatabases.Recent) = check(recent.uri, kept = true, recent)
 
     fun removeRecent(recent: RecentDatabases.Recent) {
+        if (unavailable?.uri == recent.uri) unavailable = null
         recents.remove(recent.uri)
         refreshRecents()
     }
@@ -59,7 +62,7 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
         openRequest = null
     }
 
-    private fun check(uri: Uri, kept: Boolean) {
+    private fun check(uri: Uri, kept: Boolean, recent: RecentDatabases.Recent? = null) {
         if (checking) return
         checking = true
         viewModelScope.launch {
@@ -72,7 +75,10 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
                 // A picked file that isn't a database doesn't need access kept. A recent database that
                 // can't be read right now stays, since its provider may be offline.
                 if (kept && !recents.contains(uri)) recents.release(uri)
-                message = error
+                // A recent that can't be read at all may be gone for good, so it's named and can be
+                // removed. Android doesn't reliably tell a deleted file from one that's offline.
+                if (recent != null && error == R.string.file_unreadable) unavailable = recent
+                else message = error
                 return@launch
             }
             val name = displayName ?: recentDatabases.firstOrNull { it.uri == uri }?.name

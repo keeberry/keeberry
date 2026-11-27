@@ -55,6 +55,8 @@ internal class StartState(
     val message: Int?,
     /** The file name of a database just created, to confirm. */
     val created: String?,
+    /** A recent database that couldn't be read, which may have been deleted. */
+    val unavailable: RecentDatabases.Recent? = null,
 )
 
 @Composable
@@ -65,6 +67,7 @@ internal fun StartScreen(
     onRecent: (RecentDatabases.Recent) -> Unit,
     onRemoveRecent: (RecentDatabases.Recent) -> Unit,
     onDismissMessage: () -> Unit,
+    onDismissUnavailable: () -> Unit,
     onDismissCreated: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
@@ -144,6 +147,21 @@ internal fun StartScreen(
             },
         )
     }
+    state.unavailable?.let { recent ->
+        AlertDialog(
+            onDismissRequest = onDismissUnavailable,
+            title = { Text(stringResource(R.string.open_database)) },
+            text = { Text(stringResource(R.string.recent_unavailable_message, recent.displayName())) },
+            confirmButton = {
+                TextButton({ onRemoveRecent(recent) }, shapes = ButtonDefaults.shapes()) {
+                    Text(stringResource(R.string.recent_unavailable_remove))
+                }
+            },
+            dismissButton = {
+                TextButton(onDismissUnavailable, shapes = ButtonDefaults.shapes()) { Text(stringResource(R.string.close_dialog)) }
+            },
+        )
+    }
     state.created?.let { name ->
         AlertDialog(
             onDismissRequest = onDismissCreated,
@@ -201,7 +219,7 @@ private fun RecentList(
                 leadingContent = { Icon(painterResource(R.drawable.ic_folder_open), contentDescription = null) },
             ) {
                 Text(
-                    recent.name.ifBlank { recent.uri.lastPathSegment.orEmpty() },
+                    recent.displayName(),
                     maxLines = 1,
                     overflow = TextOverflow.MiddleEllipsis,
                 )
@@ -209,6 +227,8 @@ private fun RecentList(
         }
     }
 }
+
+private fun RecentDatabases.Recent.displayName() = name.ifBlank { uri.lastPathSegment.orEmpty() }
 
 private val previewRecents = listOf(
     RecentDatabases.Recent("content://preview/personal.kdbx".toUri(), "Personal.kdbx"),
@@ -222,15 +242,17 @@ private fun StartPreview(
     checking: Boolean = false,
     message: Int? = null,
     created: String? = null,
+    unavailable: RecentDatabases.Recent? = null,
 ) {
     KeeBerryTheme {
         StartScreen(
-            StartState(recents, checking, message, created),
+            StartState(recents, checking, message, created, unavailable),
             onOpenDatabase = {},
             onCreateDatabase = {},
             onRecent = {},
             onRemoveRecent = {},
             onDismissMessage = {},
+            onDismissUnavailable = {},
             onDismissCreated = {},
             onOpenSettings = {},
         )
@@ -252,6 +274,10 @@ private fun StartCheckingPreview() = StartPreview(recents = previewRecents, chec
 @Preview(name = "Not a database", showSystemUi = true)
 @Composable
 private fun StartMessagePreview() = StartPreview(recents = previewRecents, message = R.string.file_not_kdbx)
+
+@Preview(name = "Recent database unavailable", showSystemUi = true)
+@Composable
+private fun StartUnavailablePreview() = StartPreview(recents = previewRecents, unavailable = previewRecents[1])
 
 @Preview(name = "Database created", showSystemUi = true)
 @Composable

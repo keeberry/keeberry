@@ -26,6 +26,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.keeberry.ui.TestTags
+import java.io.File
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -94,6 +95,28 @@ class StartScreenTest {
             compose.onNodeWithText(context.getString(R.string.close_dialog)).performClick()
             // A recent database that can't be opened right now stays, since its provider may be offline.
             compose.onNodeWithText("fixture.keyx").assertIsDisplayed()
+        }
+    }
+
+    @Test
+    fun namesADeletedRecentDatabaseAndOffersToRemoveIt() {
+        val uri = Fixtures.uri("password.kdbx")
+        File(context.cacheDir, "fixtures/password.kdbx").delete()
+        recents.add(uri, "Deleted database")
+        ActivityScenario.launch(MainActivity::class.java).use {
+            compose.onNodeWithText("Deleted database").performClick()
+            // The check reads the file off the main thread, which Compose's idling doesn't track.
+            val message = context.getString(R.string.recent_unavailable_message, "Deleted database")
+            compose.waitUntil(10_000) { compose.onAllNodes(hasText(message)).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText(context.getString(R.string.close_dialog)).performClick()
+            compose.onNodeWithText(message).assertDoesNotExist()
+            // Closing keeps it, since its storage may only be offline.
+            compose.onNodeWithText("Deleted database").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodes(hasText(message)).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText(context.getString(R.string.recent_unavailable_remove)).performClick()
+            compose.onNodeWithText(message).assertDoesNotExist()
+            compose.onNodeWithText("Deleted database").assertDoesNotExist()
+            assertEquals(emptyList<RecentDatabases.Recent>(), recents.list())
         }
     }
 
