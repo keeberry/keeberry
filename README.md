@@ -42,6 +42,9 @@ running Android 9 or later.
 - Key files in XML (`.keyx` and `.key`), 64-character hex, or any other file
 - Searches entries by title, group, username, URL and notes
 - Adds, edits and deletes entries, including custom fields with hidden values and groups
+- Generates passwords, with the length and kinds of character you choose, or passphrases from the
+  EFF's large wordlist, and shows how strong each one is. It can fill an entry's password or a new
+  master password
 - Moves deleted entries to the recycle bin, where you can restore them to their group or delete them for good
 - Remembers up to 10 recently opened databases for quick access; you choose how many in Settings
 - Adaptive layout for phones, foldables and tablets, with light and dark themes that follow the system or your choice in Settings
@@ -116,7 +119,8 @@ KeeBerry is licensed under the [GNU General Public License v3.0](LICENSE).
 It includes the [Argon2 reference implementation](app/src/main/cpp/argon2), used under CC0 1.0 or
 Apache 2.0, and depends on [Bouncy Castle](https://www.bouncycastle.org/) (MIT license),
 [Yubico YubiKit](https://github.com/Yubico/yubikit-android) and Android Jetpack (Apache 2.0).
-It bundles the Google Sans Flex, Inter and Roboto fonts, used under the SIL Open Font License 1.1;
+It bundles the Google Sans Flex, Inter and Roboto fonts, used under the SIL Open Font License 1.1,
+and the [EFF's large wordlist](https://www.eff.org/dice) for passphrases, used under CC BY 3.0 US;
 their licenses are in [`app/src/main/assets/licenses`](app/src/main/assets/licenses).
 
 KeeBerry is an independent project and isn't affiliated with KeePass or Yubico.

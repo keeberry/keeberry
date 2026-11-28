@@ -173,6 +173,34 @@
         <item quantity="other">After %1$d minutes</item>
     </plurals>
     <string name="lock_timeout_note">An open database stays unlocked this long after you switch to another app. Turning the screen off always locks it.</string>
+    <string name="generator_open">Generate password</string>
+    <string name="generator_title">Generate</string>
+    <string name="generator_password">Password</string>
+    <string name="generator_passphrase">Passphrase</string>
+    <string name="generator_refresh">Generate another</string>
+    <string name="generator_use_password">Use password</string>
+    <string name="generator_use_passphrase">Use passphrase</string>
+    <string name="generator_length">Length</string>
+    <string name="generator_characters">Characters</string>
+    <string name="generator_upper" translatable="false">A–Z</string>
+    <string name="generator_lower" translatable="false">a–z</string>
+    <string name="generator_digits" translatable="false">0–9</string>
+    <string name="generator_symbols" translatable="false">!@#$%</string>
+    <string name="generator_avoid_look_alike">Avoid look-alike characters</string>
+    <string name="generator_every_kind">Use every kind of character chosen</string>
+    <string name="generator_words">Words</string>
+    <string name="generator_separator">Between words</string>
+    <string name="generator_separator_space">Space</string>
+    <string name="generator_separator_none">Nothing</string>
+    <string name="generator_capitalize">Capitalize words</string>
+    <plurals name="generator_strength">
+        <item quantity="one">%1$s · %2$d bit</item>
+        <item quantity="other">%1$s · %2$d bits</item>
+    </plurals>
+    <string name="strength_poor">Poor</string>
+    <string name="strength_weak">Weak</string>
+    <string name="strength_good">Good</string>
+    <string name="strength_excellent">Excellent</string>
     <string name="create_database">Create database</string>
     <string name="create_database_description">A new, empty KeePass database (KDBX 4), protected by a master password, a key file, a YubiKey or any of them together. You’ll choose where to save it next.</string>
     <string name="create_database_name">Database name</string>

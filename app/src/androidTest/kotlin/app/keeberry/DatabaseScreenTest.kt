@@ -4,6 +4,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -35,6 +36,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.After
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -45,6 +48,14 @@ class DatabaseScreenTest {
     val compose = createEmptyComposeRule()
 
     private val context = ApplicationProvider.getApplicationContext<Context>()
+
+    /** Settings left by another test, or by trying the app on this device, would change what leaving it does. */
+    @Before
+    @After
+    fun resetSettings() {
+        context.getSharedPreferences("settings", Context.MODE_PRIVATE).edit().clear().commit()
+        AppSettings(context).theme = AppSettings.Theme.SYSTEM
+    }
 
     @Test
     fun unlocksAndListsEntries() = withDatabase {
@@ -83,6 +94,43 @@ class DatabaseScreenTest {
             assertEquals(3, database.entries.size)
         }
     }
+
+    @Test
+    fun generatesAPasswordAndAPassphraseForAnEntry() = withDatabase {
+        val settings = AppSettings(context)
+        try {
+            settings.generatorMode = AppSettings.GeneratorMode.PASSWORD
+            settings.passwordOptions = PasswordOptions()
+            settings.passphraseOptions = PassphraseOptions()
+            unlock()
+            compose.onNodeWithTag(TestTags.NEW_ENTRY).performClick()
+            compose.onNodeWithTag(TestTags.ENTRY_TITLE).performTextInput("Generated")
+            compose.onNodeWithTag(TestTags.GENERATE_PASSWORD).performClick()
+            compose.onNodeWithTag(TestTags.USE_GENERATED).performScrollTo().performClickWhenSettled(compose)
+            compose.onAllNodes(hasTestTag(TestTags.GENERATOR)).assertCountEquals(0)
+
+            // A passphrase replaces it, and the choice of a passphrase is kept for next time.
+            compose.onNodeWithTag(TestTags.GENERATE_PASSWORD).performClick()
+            compose.onNodeWithTag(TestTags.generatorMode("PASSPHRASE")).performClickWhenSettled(compose)
+            compose.waitUntil(5_000) { generated().contains(' ') }
+            val passphrase = generated()
+            compose.onNodeWithTag(TestTags.USE_GENERATED).performScrollTo().performClickWhenSettled(compose)
+            assertEquals(AppSettings.GeneratorMode.PASSPHRASE, settings.generatorMode)
+
+            compose.onNodeWithTag(TestTags.SAVE_ENTRY).performClick()
+            waitForSaved()
+            savedFile().use { database ->
+                val saved = database.entries.single { it.title == "Generated" }.fields.single { it.name == "Password" }.text()
+                assertEquals(passphrase, saved)
+                assertEquals(7, saved.split(' ').size)
+            }
+        } finally {
+            settings.generatorMode = AppSettings.GeneratorMode.PASSWORD
+        }
+    }
+
+    private fun generated(): String =
+        compose.onNodeWithTag(TestTags.GENERATED_VALUE).fetchSemanticsNode().config[SemanticsProperties.Text].joinToString("")
 
     @Test
     fun addsAnEntryToTheChosenGroup() = withDatabase("recycle-bin.kdbx") {

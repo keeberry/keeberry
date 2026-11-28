@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.TextObfuscationMode
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
@@ -78,6 +79,7 @@ import app.keeberry.R
 @Composable
 internal fun EntryEditorScreen(form: EntryEditor, onSave: () -> Unit, onDiscard: () -> Unit) {
     var confirming by rememberSaveable { mutableStateOf(false) }
+    var generating by rememberSaveable { mutableStateOf(false) }
     val enabled = !form.saving
     val close = { if (form.changed) confirming = true else onDiscard() }
     BackHandler(enabled = enabled) { close() }
@@ -129,7 +131,7 @@ internal fun EntryEditorScreen(form: EntryEditor, onSave: () -> Unit, onDiscard:
                 PlainField(form.userName, R.string.field_username, enabled, Modifier.testTag(TestTags.ENTRY_USERNAME),
                     keyboardType = KeyboardType.Email)
                 SecretField(form.password, stringResource(R.string.field_password), enabled,
-                    Modifier.testTag(TestTags.ENTRY_PASSWORD))
+                    Modifier.testTag(TestTags.ENTRY_PASSWORD), onGenerate = { generating = true })
                 PlainField(form.url, R.string.field_url, enabled, keyboardType = KeyboardType.Uri)
                 PlainField(form.notes, R.string.field_notes, enabled, multiLine = true)
                 if (form.custom.isNotEmpty()) {
@@ -156,6 +158,15 @@ internal fun EntryEditorScreen(form: EntryEditor, onSave: () -> Unit, onDiscard:
                 }
             }
         }
+    }
+    if (generating && enabled) {
+        PasswordGeneratorSheet(
+            onUse = {
+                form.password.setTextAndPlaceCursorAtEnd(it)
+                generating = false
+            },
+            onDismiss = { generating = false },
+        )
     }
     if (confirming) {
         AlertDialog(
@@ -236,7 +247,14 @@ private fun PlainField(
 }
 
 @Composable
-private fun SecretField(state: TextFieldState, label: String, enabled: Boolean, modifier: Modifier = Modifier) {
+private fun SecretField(
+    state: TextFieldState,
+    label: String,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    /** Opens the password generator, when the field offers it. */
+    onGenerate: (() -> Unit)? = null,
+) {
     var visible by rememberSaveable { mutableStateOf(false) }
     OutlinedSecureTextField(
         state = state,
@@ -244,14 +262,17 @@ private fun SecretField(state: TextFieldState, label: String, enabled: Boolean, 
         label = { Text(label) },
         textObfuscationMode = if (visible) TextObfuscationMode.Visible else TextObfuscationMode.RevealLastTyped,
         trailingIcon = {
-            val toggle = stringResource(if (visible) R.string.database_hide_field else R.string.database_show_field, label)
-            IconToggleButton(
-                checked = visible,
-                onCheckedChange = { visible = it },
-                shapes = IconButtonDefaults.toggleableShapes(),
-                enabled = enabled,
-            ) {
-                Icon(painterResource(if (visible) R.drawable.ic_visibility_off else R.drawable.ic_visibility), toggle)
+            Row {
+                if (onGenerate != null) GenerateButton(enabled, onGenerate)
+                val toggle = stringResource(if (visible) R.string.database_hide_field else R.string.database_show_field, label)
+                IconToggleButton(
+                    checked = visible,
+                    onCheckedChange = { visible = it },
+                    shapes = IconButtonDefaults.toggleableShapes(),
+                    enabled = enabled,
+                ) {
+                    Icon(painterResource(if (visible) R.drawable.ic_visibility_off else R.drawable.ic_visibility), toggle)
+                }
             }
         },
         modifier = modifier.fillMaxWidth().padding(top = 8.dp),

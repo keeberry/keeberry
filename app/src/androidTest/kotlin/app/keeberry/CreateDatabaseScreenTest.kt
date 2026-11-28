@@ -3,6 +3,7 @@ package app.keeberry
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
@@ -50,6 +51,22 @@ class CreateDatabaseScreenTest {
             compose.onNodeWithText(context.getString(R.string.create_database_password_mismatch))
                 .performScrollTo()
                 .assertIsDisplayed()
+        }
+    }
+
+    @Test
+    fun aGeneratedMasterPasswordFillsBothFields() {
+        val settings = AppSettings(context)
+        settings.generatorMode = AppSettings.GeneratorMode.PASSWORD
+        settings.passwordOptions = PasswordOptions()
+        ActivityScenario.launch(CreateDatabaseActivity::class.java).use {
+            compose.onNodeWithTag(TestTags.GENERATE_PASSWORD).performClick()
+            compose.onNodeWithTag(TestTags.USE_GENERATED).performScrollTo().performClickWhenSettled(compose)
+            fun text(tag: String) =
+                compose.onNodeWithTag(tag).fetchSemanticsNode().config[SemanticsProperties.EditableText].text
+            val password = text(TestTags.NEW_PASSWORD)
+            assertEquals(20, password.length)
+            assertEquals(password, text(TestTags.NEW_CONFIRMATION))
         }
     }
 

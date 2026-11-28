@@ -1,0 +1,9 @@
+EFF Large Wordlist for Passphrases
+
+wordlists/eff_large.txt is the Electronic Frontier Foundation's large wordlist for passphrases,
+published at https://www.eff.org/dice. KeeBerry leaves out the dice numbers and the four words
+that contain a hyphen (drop-down, felt-tip, t-shirt and yo-yo), so a hyphen can separate words.
+
+Copyright (c) 2016 Electronic Frontier Foundation.
+Licensed under the Creative Commons Attribution 3.0 United States License (CC BY 3.0 US):
+https://creativecommons.org/licenses/by/3.0/us/

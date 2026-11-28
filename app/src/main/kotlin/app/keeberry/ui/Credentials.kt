@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.KeyboardActionHandler
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.TextObfuscationMode
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -114,6 +115,17 @@ internal fun KeyFileChoice(
             TextButton(onClick = onRemove, shapes = ButtonDefaults.shapes(), enabled = enabled) {
                 Text(stringResource(R.string.database_remove_key_file))
             }
+        }
+    }
+}
+
+/** Opens the password generator from a password field. */
+@Composable
+internal fun GenerateButton(enabled: Boolean, onClick: () -> Unit) {
+    val label = stringResource(R.string.generator_open)
+    WithTooltip(label) {
+        IconButton(onClick, enabled = enabled, shapes = IconButtonDefaults.shapes(), modifier = Modifier.testTag(TestTags.GENERATE_PASSWORD)) {
+            Icon(painterResource(R.drawable.ic_password), label)
         }
     }
 }
@@ -252,10 +264,25 @@ private fun NewCredentialsFields(
     }
 }
 
-/** The master password and its confirmation, which share one show/hide toggle. */
+/**
+ * The master password and its confirmation, which share one show/hide toggle. A generated password
+ * fills both, and shows them so it can be written down.
+ */
 @Composable
 private fun NewPasswordFields(credentials: NewCredentials, enabled: Boolean, onDone: () -> Unit) {
     var visible by rememberSaveable { mutableStateOf(false) }
+    var generating by rememberSaveable { mutableStateOf(false) }
+    if (generating && enabled) {
+        PasswordGeneratorSheet(
+            onUse = {
+                credentials.password.setTextAndPlaceCursorAtEnd(it)
+                credentials.confirmation.setTextAndPlaceCursorAtEnd(it)
+                visible = true
+                generating = false
+            },
+            onDismiss = { generating = false },
+        )
+    }
     NewPasswordField(
         credentials.password,
         R.string.database_password,
@@ -264,16 +291,19 @@ private fun NewPasswordFields(credentials: NewCredentials, enabled: Boolean, onD
         onDone = null,
         modifier = Modifier.testTag(TestTags.NEW_PASSWORD),
         trailingIcon = {
-            IconToggleButton(
-                checked = visible,
-                onCheckedChange = { visible = it },
-                shapes = IconButtonDefaults.toggleableShapes(),
-                enabled = enabled,
-            ) {
-                Icon(
-                    painterResource(if (visible) R.drawable.ic_visibility_off else R.drawable.ic_visibility),
-                    stringResource(if (visible) R.string.database_hide_password else R.string.database_show_password),
-                )
+            Row {
+                GenerateButton(enabled) { generating = true }
+                IconToggleButton(
+                    checked = visible,
+                    onCheckedChange = { visible = it },
+                    shapes = IconButtonDefaults.toggleableShapes(),
+                    enabled = enabled,
+                ) {
+                    Icon(
+                        painterResource(if (visible) R.drawable.ic_visibility_off else R.drawable.ic_visibility),
+                        stringResource(if (visible) R.string.database_hide_password else R.string.database_show_password),
+                    )
+                }
             }
         },
     )
