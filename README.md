@@ -35,6 +35,9 @@ running Android 9 or later.
   combination of them, and can generate a new key file for you
 - Unlocks with a master password, a key file, a YubiKey, or any combination of them
 - Changes the master key of an open database to a new combination of password, key file and YubiKey
+- Biometric unlock: once you turn it on for a recent database, a fingerprint or other strong
+  biometric stands in for its master password and key file. A YubiKey is still needed if the
+  database uses one
 - YubiKey HMAC-SHA1 challenge-response over NFC or USB, with the slot found on its own and remembered for each database
 - Key files in XML (`.keyx` and `.key`), 64-character hex, or any other file
 - Searches entries by title, group, username, URL and notes
@@ -51,6 +54,10 @@ running Android 9 or later.
   instructions)
 - Copied passwords are marked as sensitive and cleared from the clipboard after 30 seconds
 - Screenshots and the recent-apps preview are blocked while a database is open
+- An open database locks when you leave the app, or after a delay you choose in Settings, and
+  always when the screen turns off
+- Biometric unlock keeps the master password encrypted with an Android Keystore key that only a
+  strong biometric can use, and that's deleted when a new biometric is enrolled on the device
 - Android backups are turned off, so app data isn't copied to the cloud
 - Every save is read back to check it, and the original file is restored if anything went wrong
 

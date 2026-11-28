@@ -207,6 +207,23 @@ class StartScreenTest {
         }
     }
 
+    @Test
+    fun choosingALockTimeoutKeepsIt() {
+        ActivityScenario.launch(MainActivity::class.java).use {
+            compose.onNodeWithTag(TestTags.OPEN_SETTINGS).performClick()
+            compose.onNodeWithTag(TestTags.LOCK_TIMEOUT)
+                .assert(hasText(context.getString(R.string.lock_timeout_immediately)))
+                .performClick()
+            compose.onNodeWithTag(TestTags.lockTimeoutOption(0)).assertIsSelected()
+            compose.onNodeWithTag(TestTags.lockTimeoutOption(5 * 60)).assertIsNotSelected().performClick()
+            assertEquals(5 * 60, AppSettings(context).lockTimeout)
+            compose.onNodeWithTag(TestTags.lockTimeoutOption(5 * 60)).assertIsSelected()
+            Espresso.pressBack()
+            compose.onNodeWithTag(TestTags.LOCK_TIMEOUT)
+                .assert(hasText(context.resources.getQuantityString(R.plurals.lock_timeout_minutes, 5, 5)))
+        }
+    }
+
     private fun SemanticsNodeInteraction.assertIs(on: Boolean) = if (on) assertIsOn() else assertIsOff()
 
     private fun ActivityScenario<MainActivity>.nightMode(): Int {

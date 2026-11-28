@@ -14,6 +14,7 @@ import app.keeberry.ui.SettingsState
 internal class SettingsViewModel(application: Application) : AndroidViewModel(application) {
     private val settings = AppSettings(application)
     private val recents = RecentDatabases(application)
+    private val deviceUnlock = DeviceUnlock(application)
 
     var showing by mutableStateOf(false)
     var recentLimit by mutableStateOf(settings.recentLimit)
@@ -23,14 +24,20 @@ internal class SettingsViewModel(application: Application) : AndroidViewModel(ap
     /** The font the screen is set in, which changes as soon as another is chosen. */
     var font by mutableStateOf(settings.font)
         private set
+    var lockTimeout by mutableStateOf(settings.lockTimeout)
+        private set
+    var deviceUnlockCount by mutableStateOf(deviceUnlock.count())
+        private set
 
-    val state get() = SettingsState(theme, font, recentLimit)
+    val state get() = SettingsState(theme, font, recentLimit, lockTimeout, deviceUnlockCount)
 
     /** Picks up changes made from another screen's settings, such as an open database's. */
     fun reload() {
         theme = settings.theme
         font = settings.font
         recentLimit = settings.recentLimit
+        lockTimeout = settings.lockTimeout
+        deviceUnlockCount = deviceUnlock.count()
     }
 
     fun changeFont(font: AppSettings.Font) {
@@ -47,5 +54,18 @@ internal class SettingsViewModel(application: Application) : AndroidViewModel(ap
     fun changeRecentLimit(limit: Int) {
         recents.setLimit(limit)
         recentLimit = settings.recentLimit
+        // Forgetting a database turns its biometric unlock off.
+        deviceUnlockCount = deviceUnlock.count()
+    }
+
+    fun changeLockTimeout(seconds: Int) {
+        settings.lockTimeout = seconds
+        lockTimeout = settings.lockTimeout
+    }
+
+    /** Turns biometric unlock off for every database. */
+    fun forgetDeviceUnlock() {
+        deviceUnlock.forgetAll()
+        deviceUnlockCount = deviceUnlock.count()
     }
 }

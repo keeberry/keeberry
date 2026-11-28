@@ -71,6 +71,8 @@ class MainActivity : ThemedActivity() {
                             settings.changeRecentLimit(it)
                             model.refreshRecents()
                         },
+                        onLockTimeoutChange = settings::changeLockTimeout,
+                        onForgetDeviceUnlock = settings::forgetDeviceUnlock,
                     )
                 } else {
                     StartScreen(

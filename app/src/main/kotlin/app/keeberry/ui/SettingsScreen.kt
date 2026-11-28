@@ -23,6 +23,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.ListItemDefaults
@@ -35,6 +37,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -64,15 +67,25 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.SecureFlagPolicy
 import app.keeberry.AppSettings
 import app.keeberry.R
 import kotlin.math.roundToInt
 
 /** What the settings screen shows, kept apart from where it comes from so tests and previews can supply it. */
-internal class SettingsState(val theme: AppSettings.Theme, val font: AppSettings.Font, val recentLimit: Int)
+internal class SettingsState(
+    val theme: AppSettings.Theme,
+    val font: AppSettings.Font,
+    val recentLimit: Int,
+    /** Seconds an open database stays unlocked in the background, one of [AppSettings.LOCK_TIMEOUTS]. */
+    val lockTimeout: Int = 0,
+    /** How many databases biometric unlock is on for. */
+    val deviceUnlockCount: Int = 0,
+)
 
 /** Settings' own pages, which open from a row on the main one. */
-private enum class SettingsPage { DARK_THEME, FONT }
+private enum class SettingsPage { DARK_THEME, FONT, LOCK_TIMEOUT }
 
 /**
  * App-wide settings, reachable from the start screen and from an open database. Settings are grouped
@@ -87,6 +100,8 @@ internal fun SettingsScreen(
     onThemeChange: (AppSettings.Theme) -> Unit,
     onFontChange: (AppSettings.Font) -> Unit,
     onRecentLimitChange: (Int) -> Unit,
+    onLockTimeoutChange: (Int) -> Unit = {},
+    onForgetDeviceUnlock: () -> Unit = {},
 ) {
     // Saved, so the page is still open after a theme change recreates the screen.
     var page by rememberSaveable { mutableStateOf<SettingsPage?>(null) }
@@ -94,7 +109,30 @@ internal fun SettingsScreen(
     when (page) {
         SettingsPage.DARK_THEME -> return DarkThemeScreen(state.theme, onBack = closePage, onThemeChange)
         SettingsPage.FONT -> return FontScreen(state.font, onBack = closePage, onFontChange)
+        SettingsPage.LOCK_TIMEOUT -> return LockTimeoutScreen(state.lockTimeout, onBack = closePage, onLockTimeoutChange)
         null -> {}
+    }
+    var confirmForget by rememberSaveable { mutableStateOf(false) }
+    if (confirmForget) {
+        AlertDialog(
+            onDismissRequest = { confirmForget = false },
+            title = { Text(stringResource(R.string.device_unlock_forget_title)) },
+            text = { Text(stringResource(R.string.device_unlock_forget_message)) },
+            confirmButton = {
+                TextButton(
+                    {
+                        confirmForget = false
+                        onForgetDeviceUnlock()
+                    },
+                    shapes = ButtonDefaults.shapes(),
+                    modifier = Modifier.testTag(TestTags.CONFIRM_FORGET_DEVICE_UNLOCK),
+                ) { Text(stringResource(R.string.device_unlock_forget)) }
+            },
+            dismissButton = {
+                TextButton({ confirmForget = false }, shapes = ButtonDefaults.shapes()) { Text(stringResource(R.string.cancel)) }
+            },
+            properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn),
+        )
     }
     SettingsScaffold(R.string.settings, onBack, Modifier.testTag(TestTags.SETTINGS)) {
         item {
@@ -111,9 +149,71 @@ internal fun SettingsScreen(
             }
         }
         item {
+            SettingsSection(R.string.settings_security) {
+                SettingsItem(
+                    headline = stringResource(R.string.lock_timeout),
+                    value = lockTimeoutLabel(state.lockTimeout),
+                    onClick = { page = SettingsPage.LOCK_TIMEOUT },
+                    count = 2,
+                    modifier = Modifier.testTag(TestTags.LOCK_TIMEOUT),
+                    leadingContent = { Icon(painterResource(R.drawable.ic_lock), contentDescription = null) },
+                    trailingContent = { Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null, Modifier.size(18.dp)) },
+                )
+                val count = state.deviceUnlockCount
+                SettingsItem(
+                    headline = stringResource(R.string.device_unlock),
+                    value = if (count == 0) stringResource(R.string.device_unlock_none)
+                    else pluralStringResource(R.plurals.device_unlock_count, count, count),
+                    onClick = if (count == 0) null else ({ confirmForget = true }),
+                    index = 1,
+                    count = 2,
+                    modifier = Modifier.testTag(TestTags.FORGET_DEVICE_UNLOCK),
+                    leadingContent = { Icon(painterResource(R.drawable.ic_fingerprint), contentDescription = null) },
+                )
+            }
+        }
+        item {
             SettingsSection(R.string.recent_databases) {
                 RecentLimitItem(state.recentLimit, onRecentLimitChange)
             }
+        }
+    }
+}
+
+@Composable
+private fun lockTimeoutLabel(seconds: Int): String = when {
+    seconds == 0 -> stringResource(R.string.lock_timeout_immediately)
+    seconds < 60 -> pluralStringResource(R.plurals.lock_timeout_seconds, seconds, seconds)
+    else -> pluralStringResource(R.plurals.lock_timeout_minutes, seconds / 60, seconds / 60)
+}
+
+/** How long an open database stays unlocked once KeeBerry leaves the screen, as radio preferences. */
+@Composable
+private fun LockTimeoutScreen(timeout: Int, onBack: () -> Unit, onChange: (Int) -> Unit) {
+    val options = AppSettings.LOCK_TIMEOUTS
+    SettingsScaffold(R.string.lock_timeout, onBack, Modifier.testTag(TestTags.LOCK_TIMEOUT_PAGE)) {
+        item {
+            SettingsSection(R.string.theme_options, Modifier.selectableGroup()) {
+                options.forEachIndexed { index, option ->
+                    SettingsItem(
+                        headline = lockTimeoutLabel(option),
+                        onClick = { if (option != timeout) onChange(option) },
+                        index = index,
+                        count = options.size,
+                        selected = option == timeout,
+                        modifier = Modifier.testTag(TestTags.lockTimeoutOption(option)),
+                        leadingContent = { RadioButton(selected = option == timeout, onClick = null) },
+                    )
+                }
+            }
+        }
+        item {
+            Text(
+                stringResource(R.string.lock_timeout_note),
+                Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(horizontal = 8.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -424,6 +524,12 @@ private fun SettingsOneRecentPreview() = SettingsPreview(theme = AppSettings.The
 @Composable
 private fun DarkThemeScreenPreview() {
     KeeBerryTheme { DarkThemeScreen(AppSettings.Theme.SYSTEM, onBack = {}, onChange = {}) }
+}
+
+@ScreenPreviews
+@Composable
+private fun LockTimeoutScreenPreview() {
+    KeeBerryTheme { LockTimeoutScreen(60, onBack = {}, onChange = {}) }
 }
 
 @ScreenPreviews

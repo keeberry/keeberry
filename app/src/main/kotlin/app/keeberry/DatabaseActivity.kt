@@ -1,18 +1,28 @@
 package app.keeberry
 
 import android.content.ActivityNotFoundException
+import android.content.BroadcastReceiver
 import android.content.ContentResolver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
 import android.os.Bundle
+import android.os.CancellationSignal
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult
 import androidx.compose.foundation.text.input.clearText
+import androidx.compose.runtime.LaunchedEffect
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import app.keeberry.ui.BrowserState
+import app.keeberry.ui.DeviceUnlockState
 import app.keeberry.ui.KeeBerryTheme
 import app.keeberry.ui.DatabaseScreen
 import app.keeberry.ui.MasterKeyActions
@@ -23,6 +33,20 @@ class DatabaseActivity : ThemedActivity() {
     private lateinit var model: DatabaseViewModel
     private lateinit var databaseUri: Uri
     private var pickingKey = false
+    /** Dismisses the biometric prompt on screen, which leaving the app does. */
+    private var promptSignal: CancellationSignal? = null
+    private val main = Handler(Looper.getMainLooper())
+    private val lockLater = Runnable(::lockAndFinish)
+    /** When, in [SystemClock.elapsedRealtime], a database left open in the background locks. */
+    private var lockAt: Long? = null
+    private var listeningForScreenOff = false
+
+    /** Turning the screen off locks an open database, whatever the lock timeout. */
+    private val screenOff = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (model.database != null || model.isUnlocking) lockAndFinish()
+        }
+    }
 
     private val pickKeyDocument = registerForActivityResult(StartActivityForResult()) { result ->
         pickingKey = false
@@ -63,9 +87,14 @@ class DatabaseActivity : ThemedActivity() {
         enableEdgeToEdge()
         // After a configuration change the model still holds the database or the unlock in progress.
         model.attach(this)
+        model.prepareDeviceUnlock(uri)
+        ContextCompat.registerReceiver(this, screenOff, IntentFilter(Intent.ACTION_SCREEN_OFF), ContextCompat.RECEIVER_NOT_EXPORTED)
+        listeningForScreenOff = true
         val fileName = intent.getStringExtra(EXTRA_DISPLAY_NAME)
         setContent {
             KeeBerryTheme(settings.font) {
+                val prompt = model.prompt
+                LaunchedEffect(prompt) { if (prompt != null) showPrompt(fileName) }
                 DatabaseScreen(
                     fileName = fileName,
                     unlock = UnlockState(
@@ -78,6 +107,11 @@ class DatabaseActivity : ThemedActivity() {
                         useYubiKey = model.useYubiKey,
                         error = model.error,
                         progress = model.progress,
+                        device = DeviceUnlockState(
+                            offered = model.deviceUnlockOffered,
+                            saved = model.deviceUnlockSaved,
+                            remember = model.rememberDevice,
+                        ),
                     ),
                     browser = model.database?.let {
                         BrowserState(
@@ -87,6 +121,7 @@ class DatabaseActivity : ThemedActivity() {
                     editor = model.editor,
                     keyChange = model.keyChange,
                     keyChanged = model.keyChanged,
+                    keyChangeEndedDeviceUnlock = model.keyChangeEndedDeviceUnlock,
                     onBack = ::finish,
                     onLock = ::finish,
                     onUnlock = { model.unlock(databaseUri, this) },
@@ -95,6 +130,10 @@ class DatabaseActivity : ThemedActivity() {
                     onRemoveKeyFile = model::removeKeyFile,
                     onUsePasswordChange = model::onUsePasswordChanged,
                     onUseYubiKeyChange = model::onUseYubiKeyChanged,
+                    onRememberDeviceChange = model::onRememberDeviceChanged,
+                    onDeviceUnlock = model::startDeviceUnlock,
+                    deviceUnlockError = model.deviceUnlockError,
+                    onDeviceUnlockErrorShown = { model.deviceUnlockError = null },
                     onSavedEntryShown = { model.savedEntry = null },
                     onNewEntry = { model.startEditing(null) },
                     onEditEntry = model::startEditing,
@@ -131,7 +170,15 @@ class DatabaseActivity : ThemedActivity() {
                             applyTheme()
                         },
                         onFontChange = settings::changeFont,
-                        onRecentLimitChange = settings::changeRecentLimit,
+                        onRecentLimitChange = {
+                            settings.changeRecentLimit(it)
+                            model.refreshDeviceUnlock()
+                        },
+                        onLockTimeoutChange = settings::changeLockTimeout,
+                        onForgetDeviceUnlock = {
+                            settings.forgetDeviceUnlock()
+                            model.refreshDeviceUnlock()
+                        },
                     ),
                 )
             }
@@ -140,7 +187,26 @@ class DatabaseActivity : ThemedActivity() {
 
     private fun chooseKeyFile() = launchPicker(pickKeyDocument, openKeyDocument())
 
-    private fun openKeyDocument() = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+    // Access can be kept across restarts, which biometric unlock needs to read the key file later.
+    private fun openKeyDocument() = Intent(Intent.ACTION_OPEN_DOCUMENT)
+        .addCategory(Intent.CATEGORY_OPENABLE)
+        .setType("*/*")
+        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+
+    /** Shows the biometric prompt the model asks for, if it still does. */
+    private fun showPrompt(fileName: String?) {
+        val request = model.takePrompt() ?: return
+        val signal = CancellationSignal()
+        promptSignal = signal
+        val enable = request is DatabaseViewModel.DevicePrompt.Enable
+        val title = getString(if (enable) R.string.device_unlock_enable_title else R.string.device_unlock_title)
+        val dismiss = getString(if (enable) R.string.device_unlock_not_now else R.string.device_unlock_use_password)
+        showBiometricPrompt(title, fileName, dismiss, request.cipher, signal) { result ->
+            if (promptSignal === signal) promptSignal = null
+            // The model hands the result to the screen showing now, which a rotation may have replaced.
+            model.onPromptResult(request, result)
+        }
+    }
 
     private fun newKeyFileName(): String {
         val name = model.database?.name?.takeIf { it.isNotBlank() }
@@ -159,18 +225,53 @@ class DatabaseActivity : ThemedActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        main.removeCallbacks(lockLater)
+        val deadline = lockAt
+        lockAt = null
+        // The timer stops while the device sleeps, so a deadline that passed meanwhile locks now.
+        if (deadline != null && SystemClock.elapsedRealtime() >= deadline) lockAndFinish()
+    }
+
     override fun onStop() {
         // A configuration change recreates this screen around the same model, so only leaving
         // the app clears the password and locks the database. A key file picker the user opened
-        // keeps both, so the forms still hold what was typed when it returns.
+        // keeps both, so the forms still hold what was typed when it returns. A biometric prompt,
+        // which sits over this screen without stopping it, is dismissed.
         if (!isChangingConfigurations && !pickingKey) {
-            model.password.clearText()
-            if (model.database != null || model.isUnlocking) {
-                model.lock()
-                finish()
-            }
+            promptSignal?.cancel()
+            leave()
         }
         super.onStop()
+    }
+
+    override fun onDestroy() {
+        main.removeCallbacks(lockLater)
+        if (listeningForScreenOff) unregisterReceiver(screenOff)
+        super.onDestroy()
+    }
+
+    /**
+     * Clears the typed password and locks the database, right away or, with a lock timeout set in
+     * Settings, once it passes. An unlock under way stops either way.
+     */
+    private fun leave() {
+        model.password.clearText()
+        if (model.database == null && !model.isUnlocking) return
+        val timeout = AppSettings(this).lockTimeout
+        if (timeout == 0 || model.database == null) return lockAndFinish()
+        lockAt = SystemClock.elapsedRealtime() + timeout * 1000L
+        main.removeCallbacks(lockLater)
+        main.postDelayed(lockLater, timeout * 1000L)
+    }
+
+    private fun lockAndFinish() {
+        main.removeCallbacks(lockLater)
+        lockAt = null
+        promptSignal?.cancel()
+        model.lock()
+        finish()
     }
 
     companion object {

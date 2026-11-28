@@ -43,6 +43,14 @@ internal class AppSettings(context: Context) {
         get() = Font.entries.firstOrNull { it.name == preferences.getString(FONT, null) } ?: DEFAULT_FONT
         set(value) = preferences.edit { putString(FONT, value.name) }
 
+    /**
+     * How many seconds an open database stays unlocked after KeeBerry leaves the screen, one of
+     * [LOCK_TIMEOUTS]. At 0 it locks right away. Turning the screen off locks it whatever this is.
+     */
+    var lockTimeout: Int
+        get() = preferences.getInt(LOCK_TIMEOUT, 0).takeIf { it in LOCK_TIMEOUTS } ?: 0
+        set(value) = preferences.edit { putInt(LOCK_TIMEOUT, value.takeIf { it in LOCK_TIMEOUTS } ?: 0) }
+
     enum class Theme { SYSTEM, LIGHT, DARK }
 
     /** The fonts KeeBerry bundles, in the order Settings lists them. */
@@ -51,6 +59,8 @@ internal class AppSettings(context: Context) {
     companion object {
         val DEFAULT_FONT = Font.GOOGLE_SANS_FLEX
         private const val FONT = "font"
+        val LOCK_TIMEOUTS = listOf(0, 30, 60, 5 * 60, 15 * 60)
+        private const val LOCK_TIMEOUT = "lock_timeout"
         val RECENT_LIMITS = 1..10
         const val DEFAULT_RECENT_LIMIT = 5
         private const val RECENT_LIMIT = "recent_limit"

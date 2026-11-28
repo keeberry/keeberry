@@ -35,6 +35,7 @@ import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedSecureTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedListItem
@@ -137,6 +138,17 @@ internal class UnlockState(
     val useYubiKey: Boolean,
     val error: Int?,
     val progress: DatabaseViewModel.Progress?,
+    val device: DeviceUnlockState = DeviceUnlockState(),
+)
+
+/** Biometric unlock on the unlock form. */
+internal class DeviceUnlockState(
+    /** Whether the form offers it at all: the device has a strong biometric and the database is a recent one. */
+    val offered: Boolean = false,
+    /** Whether it's on, so the form offers to unlock with it. */
+    val saved: Boolean = false,
+    /** Whether the box is ticked: on, or to be turned on by the next unlock. */
+    val remember: Boolean = false,
 )
 
 /** What an unlocked database shows. */
@@ -184,7 +196,14 @@ internal fun DatabaseScreen(
     onDiscardEntry: () -> Unit,
     keyChange: MasterKeyChange? = null,
     keyChanged: Boolean = false,
+    /** Whether the key change turned biometric unlock off, which its confirmation says. */
+    keyChangeEndedDeviceUnlock: Boolean = false,
     keyActions: MasterKeyActions = MasterKeyActions(),
+    onRememberDeviceChange: (Boolean) -> Unit = {},
+    onDeviceUnlock: () -> Unit = {},
+    /** Why biometric unlock couldn't be turned on after the unlock, shown over the entries. */
+    deviceUnlockError: Int? = null,
+    onDeviceUnlockErrorShown: () -> Unit = {},
     /** The app's settings, while they cover the open database. */
     settings: SettingsState? = null,
     settingsActions: SettingsActions = SettingsActions(),
@@ -201,7 +220,7 @@ internal fun DatabaseScreen(
         when {
             settings != null -> SettingsScreen(
                 settings, settingsActions.onClose, settingsActions.onThemeChange, settingsActions.onFontChange,
-                settingsActions.onRecentLimitChange,
+                settingsActions.onRecentLimitChange, settingsActions.onLockTimeoutChange, settingsActions.onForgetDeviceUnlock,
             )
             keyChange != null -> ChangeMasterKeyScreen(keyChange, keyActions)
             editor != null -> EntryEditorScreen(editor, onSave = onSaveEntry, onDiscard = onDiscardEntry)
@@ -216,9 +235,23 @@ internal fun DatabaseScreen(
             AlertDialog(
                 onDismissRequest = keyActions.onChangedShown,
                 title = { Text(stringResource(R.string.master_key_changed_title)) },
-                text = { Text(stringResource(R.string.master_key_changed_message)) },
+                text = {
+                    val message = stringResource(R.string.master_key_changed_message)
+                    Text(if (keyChangeEndedDeviceUnlock) message + "\n\n" + stringResource(R.string.master_key_changed_device_unlock) else message)
+                },
                 confirmButton = {
                     TextButton(keyActions.onChangedShown, shapes = ButtonDefaults.shapes()) { Text(stringResource(R.string.close_dialog)) }
+                },
+                properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn),
+            )
+        }
+        if (deviceUnlockError != null) {
+            AlertDialog(
+                onDismissRequest = onDeviceUnlockErrorShown,
+                title = { Text(stringResource(R.string.device_unlock)) },
+                text = { Text(stringResource(deviceUnlockError)) },
+                confirmButton = {
+                    TextButton(onDeviceUnlockErrorShown, shapes = ButtonDefaults.shapes()) { Text(stringResource(R.string.close_dialog)) }
                 },
                 properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn),
             )
@@ -239,6 +272,8 @@ internal fun DatabaseScreen(
             onRemoveKeyFile = onRemoveKeyFile,
             onUsePasswordChange = onUsePasswordChange,
             onUseYubiKeyChange = onUseYubiKeyChange,
+            onRememberDeviceChange = onRememberDeviceChange,
+            onDeviceUnlock = onDeviceUnlock,
             modifier = Modifier.padding(padding).consumeWindowInsets(padding).imePadding(),
         )
     }
@@ -289,6 +324,8 @@ internal class SettingsActions(
     val onThemeChange: (AppSettings.Theme) -> Unit = {},
     val onFontChange: (AppSettings.Font) -> Unit = {},
     val onRecentLimitChange: (Int) -> Unit = {},
+    val onLockTimeoutChange: (Int) -> Unit = {},
+    val onForgetDeviceUnlock: () -> Unit = {},
 )
 
 /** What the change-master-key form can ask for. */
@@ -613,6 +650,8 @@ private fun UnlockForm(
     onRemoveKeyFile: () -> Unit,
     onUsePasswordChange: (Boolean) -> Unit,
     onUseYubiKeyChange: (Boolean) -> Unit,
+    onRememberDeviceChange: (Boolean) -> Unit,
+    onDeviceUnlock: () -> Unit,
     modifier: Modifier,
 ) {
     val progress = state.progress
@@ -643,6 +682,15 @@ private fun UnlockForm(
                 if (state.showsPassword) PasswordField(state.password, enabled = !unlocking, onUnlock)
                 KeyFileChoice(state.keyName, state.hasKeyFile, enabled = !unlocking, onPickKeyFile, onRemoveKeyFile)
                 CheckboxRow(R.string.database_use_yubikey, state.useYubiKey, !unlocking, onUseYubiKeyChange)
+                if (state.device.offered) {
+                    CheckboxRow(
+                        R.string.device_unlock_remember,
+                        state.device.remember,
+                        !unlocking,
+                        onRememberDeviceChange,
+                        Modifier.testTag(TestTags.REMEMBER_DEVICE),
+                    )
+                }
                 state.error?.let {
                     Text(
                         stringResource(it),
@@ -657,7 +705,15 @@ private fun UnlockForm(
                     modifier = Modifier.fillMaxWidth().padding(top = 16.dp).testTag(TestTags.UNLOCK),
                     enabled = !unlocking,
                 )
-                // Below the button, so nothing the user just tapped moves when it appears.
+                if (state.device.saved) {
+                    OutlinedButton(
+                        onClick = onDeviceUnlock,
+                        shapes = ButtonDefaults.shapes(),
+                        enabled = !unlocking,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag(TestTags.DEVICE_UNLOCK),
+                    ) { Text(stringResource(R.string.device_unlock_action)) }
+                }
+                // Below the buttons, so nothing the user just tapped moves when it appears.
                 if (progress != null) TaskProgress(progress, onCancel)
             }
         }
@@ -1101,6 +1157,7 @@ private fun previewUnlock(
     useYubiKey: Boolean = false,
     error: Int? = null,
     progress: DatabaseViewModel.Progress? = null,
+    device: DeviceUnlockState = DeviceUnlockState(),
 ) = UnlockState(
     password = TextFieldState(),
     // As the view model has it: the password is optional only next to another credential.
@@ -1112,6 +1169,7 @@ private fun previewUnlock(
     useYubiKey = useYubiKey,
     error = error,
     progress = progress,
+    device = device,
 )
 
 private fun previewBrowser(
@@ -1170,6 +1228,11 @@ private fun UnlockErrorPreview() = DatabasePreview(previewUnlock(error = R.strin
 @Preview(name = "Key file and YubiKey", showSystemUi = true)
 @Composable
 private fun UnlockKeyFilePreview() = DatabasePreview(previewUnlock(hasKeyFile = true, useYubiKey = true))
+
+@Preview(name = "Biometric unlock", showSystemUi = true)
+@Composable
+private fun UnlockBiometricPreview() =
+    DatabasePreview(previewUnlock(device = DeviceUnlockState(offered = true, saved = true, remember = true)))
 
 @Preview(name = "Unlocking", showSystemUi = true)
 @Composable

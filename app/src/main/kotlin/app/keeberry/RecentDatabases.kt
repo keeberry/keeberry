@@ -113,7 +113,9 @@ internal class RecentDatabases(context: Context) {
         save(list().filter { it.uri != uri })
     }
 
+    /** Gives up access to [uri], and turns its biometric unlock off. */
     fun release(uri: Uri) {
+        DeviceUnlock(app).forget(uri)
         val resolver = app.contentResolver
         val read = Intent.FLAG_GRANT_READ_URI_PERMISSION
         try {

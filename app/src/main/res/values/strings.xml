@@ -139,6 +139,40 @@
     <string name="master_key_changing">Changing…</string>
     <string name="master_key_changed_title">Master key changed</string>
     <string name="master_key_changed_message">From now on, unlock this database with its new credentials.</string>
+    <string name="master_key_changed_device_unlock">Biometric unlock is off for now. Unlock with the new credentials to turn it on again.</string>
+    <string name="device_unlock">Biometric unlock</string>
+    <string name="device_unlock_remember">Unlock with biometrics</string>
+    <string name="device_unlock_action">Use biometrics</string>
+    <string name="device_unlock_title">Unlock database</string>
+    <string name="device_unlock_enable_title">Turn on biometric unlock</string>
+    <string name="device_unlock_use_password">Use credentials</string>
+    <string name="device_unlock_not_now">Not now</string>
+    <string name="device_unlock_failed">Biometric unlock didn’t work. Try again, or unlock with your credentials.</string>
+    <string name="device_unlock_lockout">Too many attempts. Unlock with your credentials, or try biometrics again later.</string>
+    <string name="device_unlock_invalidated">Biometric unlock was turned off because the biometrics on this device changed. Unlock with your credentials to turn it on again.</string>
+    <string name="device_unlock_stale">The saved credentials no longer unlock this database, so biometric unlock was turned off. Unlock with your current credentials to turn it on again.</string>
+    <string name="device_unlock_enable_error">Couldn’t turn on biometric unlock on this device.</string>
+    <string name="device_unlock_key_file_error">Biometric unlock wasn’t turned on: the key file’s storage doesn’t let KeeBerry keep access to it.</string>
+    <string name="device_unlock_none">Turn it on from a database’s unlock screen. A YubiKey is still needed if the database uses one.</string>
+    <plurals name="device_unlock_count">
+        <item quantity="one">On for %1$d database. Tap to turn it off.</item>
+        <item quantity="other">On for %1$d databases. Tap to turn it off for all of them.</item>
+    </plurals>
+    <string name="device_unlock_forget_title">Turn off biometric unlock?</string>
+    <string name="device_unlock_forget_message">KeeBerry will forget the saved credentials. Databases then unlock with their master password, key file or YubiKey until you turn biometric unlock on again.</string>
+    <string name="device_unlock_forget">Turn off</string>
+    <string name="settings_security">Security</string>
+    <string name="lock_timeout">Lock after leaving the app</string>
+    <string name="lock_timeout_immediately">Immediately</string>
+    <plurals name="lock_timeout_seconds">
+        <item quantity="one">After %1$d second</item>
+        <item quantity="other">After %1$d seconds</item>
+    </plurals>
+    <plurals name="lock_timeout_minutes">
+        <item quantity="one">After %1$d minute</item>
+        <item quantity="other">After %1$d minutes</item>
+    </plurals>
+    <string name="lock_timeout_note">An open database stays unlocked this long after you switch to another app. Turning the screen off always locks it.</string>
     <string name="create_database">Create database</string>
     <string name="create_database_description">A new, empty KeePass database (KDBX 4), protected by a master password, a key file, a YubiKey or any of them together. You’ll choose where to save it next.</string>
     <string name="create_database_name">Database name</string>

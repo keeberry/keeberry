@@ -39,6 +39,9 @@ import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.lang.ref.WeakReference
+import java.security.GeneralSecurityException
+import javax.crypto.Cipher
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -89,6 +92,43 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
         private set
     /** Whether the master key just changed, which the screen confirms once. */
     var keyChanged by mutableStateOf(false)
+    /** Whether that change turned biometric unlock off, which the confirmation then says. */
+    var keyChangeEndedDeviceUnlock by mutableStateOf(false)
+        private set
+
+    /** Whether the form offers biometric unlock: the device has a strong biometric and the database is a recent one. */
+    var deviceUnlockOffered by mutableStateOf(false)
+        private set
+    /** Whether biometric unlock is on for this database, so the form offers to unlock with it. */
+    var deviceUnlockSaved by mutableStateOf(false)
+        private set
+    /** Whether the form's "Unlock with biometrics" box is ticked: on, or to be turned on by the next unlock. */
+    var rememberDevice by mutableStateOf(false)
+        private set
+    /** A biometric prompt for the screen to show, which it takes with [takePrompt]. */
+    var prompt by mutableStateOf<DevicePrompt?>(null)
+        private set
+    /** Why biometric unlock couldn't be turned on after an unlock, which the screen shows once. */
+    var deviceUnlockError by mutableStateOf<Int?>(null)
+
+    /** What a biometric prompt is for. */
+    sealed interface DevicePrompt {
+        val cipher: Cipher
+
+        /** Turns biometric unlock on with the credentials that just unlocked the database. */
+        class Enable(override val cipher: Cipher) : DevicePrompt
+
+        /** Unlocks with what [saved] holds. */
+        class Unlock(override val cipher: Cipher, val saved: DeviceUnlock.Saved) : DevicePrompt
+    }
+
+    /** The credentials an unlock used, kept until biometric unlock is turned on with them or not. */
+    private class Enrollment(val password: CharArray?, val keyFile: Uri?, val keyName: String?, val useYubiKey: Boolean) {
+        fun clear() = password?.fill('\u0000')
+    }
+
+    /** What the unlock under way is: one with saved biometric credentials, or one that may turn them on. */
+    private class Attempt(val withDevice: Boolean, val enrollment: Enrollment?)
 
     val canEdit: Boolean get() = database?.editable == true && writable
 
@@ -98,6 +138,11 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
     private var hardware: YubiKeyChallenge? = null
     private var databaseUri: Uri? = null
     private var saveJob: Job? = null
+    private var attempt: Attempt? = null
+    private var enrollment: Enrollment? = null
+    private var deviceUnlockPrepared = false
+    /** The screen showing now, which a YubiKey asked for after a biometric prompt listens on. */
+    private var host: WeakReference<ComponentActivity>? = null
 
     val isUnlocking: Boolean get() = unlockJob != null
 
@@ -134,8 +179,125 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
 
     /** Moves a pending YubiKey request to the recreated screen, which NFC discovery needs. */
     fun attach(activity: ComponentActivity) {
+        host = WeakReference(activity)
         hardware?.attach(activity)
         keyChange?.hardware?.attach(activity)
+    }
+
+    /**
+     * Reads whether biometric unlock is on for [databaseUri]. The first time this screen opens, with
+     * biometric unlock on, it asks for the biometric right away.
+     */
+    fun prepareDeviceUnlock(databaseUri: Uri) {
+        this.databaseUri = databaseUri
+        refreshDeviceUnlock()
+        if (deviceUnlockPrepared) return
+        deviceUnlockPrepared = true
+        rememberDevice = deviceUnlockSaved
+        if (deviceUnlockSaved && database == null) startDeviceUnlock()
+    }
+
+    /** Picks up biometric unlock being turned off elsewhere, as from Settings. */
+    fun refreshDeviceUnlock() {
+        val uri = databaseUri ?: return
+        val app = getApplication<Application>()
+        val store = DeviceUnlock(app)
+        deviceUnlockOffered = store.available() && RecentDatabases(app).contains(uri)
+        deviceUnlockSaved = deviceUnlockOffered && store.saved(uri) != null
+        if (!deviceUnlockOffered) rememberDevice = false
+    }
+
+    /** Ticking the box turns biometric unlock on with the next unlock; unticking it turns it off now. */
+    fun onRememberDeviceChanged(checked: Boolean) {
+        rememberDevice = checked
+        val uri = databaseUri
+        if (!checked && deviceUnlockSaved && uri != null) {
+            DeviceUnlock(getApplication()).forget(uri)
+            deviceUnlockSaved = false
+        }
+    }
+
+    /** Asks for the biometric that unlocks the database with its saved credentials. */
+    fun startDeviceUnlock() {
+        val uri = databaseUri ?: return
+        if (unlockJob != null || database != null || prompt != null) return
+        val store = DeviceUnlock(getApplication())
+        val saved = store.saved(uri)
+        if (saved == null) {
+            deviceUnlockSaved = false
+            return
+        }
+        val cipher = try {
+            store.decrypter(saved)
+        } catch (_: GeneralSecurityException) {
+            error = R.string.device_unlock_failed
+            return
+        }
+        if (cipher == null) {
+            // A biometric enrolled since then deleted the key.
+            deviceUnlockSaved = false
+            error = R.string.device_unlock_invalidated
+            return
+        }
+        error = null
+        prompt = DevicePrompt.Unlock(cipher, saved)
+    }
+
+    /** Hands the waiting prompt to the screen, which shows it. */
+    fun takePrompt(): DevicePrompt? = prompt.also { prompt = null }
+
+    /** Acts on how the prompt for [request] ended. */
+    fun onPromptResult(request: DevicePrompt, result: PromptResult) {
+        when (request) {
+            is DevicePrompt.Unlock -> when (result) {
+                is PromptResult.Succeeded -> host?.get()?.takeUnless { it.isDestroyed }?.let { unlockWithDevice(request.saved, result.cipher, it) }
+                is PromptResult.Failed -> error = result.message
+                PromptResult.Cancelled -> {}
+            }
+            is DevicePrompt.Enable -> {
+                val pending = enrollment ?: return
+                enrollment = null
+                try {
+                    when (result) {
+                        is PromptResult.Succeeded -> enableDeviceUnlock(pending, result.cipher)
+                        is PromptResult.Failed -> deviceUnlockError = result.message
+                        // Not now: the box is cleared, so the next unlock doesn't ask again.
+                        PromptResult.Cancelled -> rememberDevice = false
+                    }
+                } finally {
+                    pending.clear()
+                }
+            }
+        }
+    }
+
+    private fun enableDeviceUnlock(pending: Enrollment, cipher: Cipher) {
+        val uri = databaseUri ?: return
+        val saved = try {
+            DeviceUnlock(getApplication()).save(uri, cipher, pending.password, pending.keyFile, pending.keyName, pending.useYubiKey)
+        } catch (_: GeneralSecurityException) {
+            deviceUnlockError = R.string.device_unlock_enable_error
+            return
+        }
+        if (saved) deviceUnlockSaved = true else deviceUnlockError = R.string.device_unlock_key_file_error
+    }
+
+    private fun unlockWithDevice(saved: DeviceUnlock.Saved, cipher: Cipher, activity: ComponentActivity) {
+        val uri = databaseUri ?: return
+        if (unlockJob != null || database != null) return
+        val pass = try {
+            DeviceUnlock(getApplication()).password(saved, cipher)
+        } catch (_: GeneralSecurityException) {
+            error = R.string.device_unlock_failed
+            return
+        }
+        // The form shows what is used, so a failure such as a missing key file can be put right by hand.
+        keyUri = saved.keyFile
+        keyName = saved.keyName
+        useYubiKey = saved.useYubiKey
+        usePassword = saved.password != null
+        password.clearText()
+        startUnlock(uri, activity, pass, saved.keyFile, saved.useYubiKey, Attempt(withDevice = true, enrollment = null))
     }
 
     /** Starts unlocking with what the form holds, and clears the typed password. */
@@ -145,6 +307,21 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
         val withYubiKey = useYubiKey
         val pass = if (showsPassword) password.text.let { text -> CharArray(text.length) { text[it] } } else null
         password.clearText()
+        this.databaseUri = databaseUri
+        val enroll = deviceUnlockOffered && rememberDevice && !deviceUnlockSaved
+        val pending = if (enroll) Enrollment(pass?.copyOf(), key, keyName, withYubiKey) else null
+        startUnlock(databaseUri, activity, pass, key, withYubiKey, Attempt(withDevice = false, enrollment = pending))
+    }
+
+    /** Unlocks with [pass], which this wipes, the key file [key] and a YubiKey if [withYubiKey]. */
+    private fun startUnlock(
+        databaseUri: Uri,
+        activity: ComponentActivity,
+        pass: CharArray?,
+        key: Uri?,
+        withYubiKey: Boolean,
+        attempt: Attempt,
+    ) {
         val signal = CancellationSignal()
         lateinit var job: Job
         val hardware = if (!withYubiKey) null else {
@@ -166,6 +343,7 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
             }
         }
         unlockJob = job
+        this.attempt = attempt
         this.databaseUri = databaseUri
         this.signal = signal
         this.hardware = hardware
@@ -206,13 +384,45 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
             result.getOrNull()?.close()
             return
         }
+        val attempt = attempt
         clearRequest()
+        val uri = databaseUri
         result.fold({
             database = it
-            val uri = databaseUri
             writable = uri?.let(::canWrite) == true
             if (uri != null && yubiKey != null) RecentDatabases(getApplication()).rememberYubiKey(uri, yubiKey)
-        }, { error = errorMessage(it, withYubiKey) })
+            attempt?.enrollment?.let(::askToEnable)
+        }, { failure ->
+            attempt?.enrollment?.clear()
+            val stale = attempt?.withDevice == true && (failure as? KdbxException)?.failure == KdbxFailure.CREDENTIALS
+            if (stale && uri != null) {
+                // The password was changed elsewhere since biometric unlock was turned on.
+                DeviceUnlock(getApplication()).forget(uri)
+                deviceUnlockSaved = false
+                error = R.string.device_unlock_stale
+            } else error = errorMessage(failure, withYubiKey)
+        })
+    }
+
+    /** Asks for the biometric that turns biometric unlock on with the credentials in [pending]. */
+    private fun askToEnable(pending: Enrollment) {
+        val uri = databaseUri
+        val cipher = try {
+            uri?.let { DeviceUnlock(getApplication()).encrypter(it) }
+        } catch (_: GeneralSecurityException) {
+            null
+        } catch (_: IllegalStateException) {
+            // Android 9 with no fingerprint enrolled.
+            null
+        }
+        if (cipher == null) {
+            pending.clear()
+            deviceUnlockError = R.string.device_unlock_enable_error
+            return
+        }
+        enrollment?.clear()
+        enrollment = pending
+        prompt = DevicePrompt.Enable(cipher)
     }
 
     /**
@@ -461,6 +671,12 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
         val changed = result.getOrNull()
         // The file has the new key even if the database was locked meanwhile.
         if (changed != null && yubiKey != null) RecentDatabases(getApplication()).rememberYubiKey(uri, yubiKey)
+        // The saved password is the old one now. The box stays ticked, so the next unlock offers it again.
+        val endedDeviceUnlock = changed != null && DeviceUnlock(getApplication()).saved(uri) != null
+        if (endedDeviceUnlock) {
+            DeviceUnlock(getApplication()).forget(uri)
+            deviceUnlockSaved = false
+        }
         // Locked while changing: if the file changed, nothing is shown any more.
         if (database !== previous) {
             changed?.close()
@@ -474,6 +690,7 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
         database = changed
         if (keyChange === form) keyChange = null
         keyChanged = true
+        keyChangeEndedDeviceUnlock = endedDeviceUnlock
     }
 
     private fun keyChangeErrorMessage(error: Throwable?): Int = when {
@@ -694,6 +911,7 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
     // closing the YubiKey request ends any wait for a key.
     fun cancel() {
         val job = unlockJob ?: return
+        attempt?.enrollment?.clear()
         job.cancel()
         signal?.cancel()
         hardware?.close()
@@ -708,6 +926,11 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
         }
         keyChange = null
         keyChanged = false
+        keyChangeEndedDeviceUnlock = false
+        enrollment?.clear()
+        enrollment = null
+        prompt = null
+        deviceUnlockError = null
         editor?.clear()
         editor = null
         savedEntry = null
@@ -723,6 +946,7 @@ internal class DatabaseViewModel(application: Application) : AndroidViewModel(ap
 
     private fun clearRequest() {
         unlockJob = null
+        attempt = null
         signal = null
         hardware = null
         progress = null

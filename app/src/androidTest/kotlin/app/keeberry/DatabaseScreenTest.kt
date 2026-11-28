@@ -317,6 +317,29 @@ class DatabaseScreenTest {
     }
 
     @Test
+    fun aLockTimeoutKeepsTheDatabaseOpenInTheBackground() = withDatabase { scenario ->
+        val settings = AppSettings(context)
+        try {
+            settings.lockTimeout = 60
+            unlock()
+            scenario.moveToState(Lifecycle.State.CREATED)
+            assertEquals(Lifecycle.State.CREATED, scenario.state)
+            scenario.moveToState(Lifecycle.State.RESUMED)
+            compose.onNodeWithText("Second entry").assertIsDisplayed()
+        } finally {
+            settings.lockTimeout = 0
+        }
+    }
+
+    @Test
+    fun offersBiometricUnlockOnlyForRecentDatabases() = withDatabase {
+        // The fixture isn't a recent database, so there's nothing to keep biometric unlock with.
+        compose.onNodeWithTag(TestTags.PASSWORD).assertIsDisplayed()
+        compose.onAllNodes(hasTestTag(TestTags.REMEMBER_DEVICE)).assertCountEquals(0)
+        compose.onAllNodes(hasTestTag(TestTags.DEVICE_UNLOCK)).assertCountEquals(0)
+    }
+
+    @Test
     fun changesTheMasterKeyToANewPassword() = withDatabase {
         unlock()
         compose.onNodeWithTag(TestTags.MORE_OPTIONS).performClick()
