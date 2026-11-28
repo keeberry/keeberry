@@ -1,7 +1,6 @@
 package app.keeberry.ui
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -20,7 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -122,17 +121,21 @@ internal fun StartScreen(
             }
             // Settings apply to every database, so they're here before one is opened.
             val settings = stringResource(R.string.settings)
-            Box(Modifier.align(Alignment.TopEnd).padding(4.dp)) {
-                WithTooltip(settings) {
-                    // Filled, so the round button stands out from the screen behind it.
-                    FilledTonalIconButton(
-                        onOpenSettings,
-                        shapes = IconButtonDefaults.shapes(),
-                        modifier = Modifier.testTag(TestTags.OPEN_SETTINGS),
-                    ) {
-                        Icon(painterResource(R.drawable.ic_settings), settings)
-                    }
-                }
+            // Placed and sized like Pixel's Now Playing: a circle that keeps its shape when pressed, with no
+            // tooltip, 20dp below the status bar and 24dp from the edge (16dp and 20dp to its touch area).
+            // Its colour isn't a theme role, so the closest one stands in for it.
+            FilledIconButton(
+                onOpenSettings,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 16.dp, end = 20.dp)
+                    .testTag(TestTags.OPEN_SETTINGS),
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                ),
+            ) {
+                Icon(painterResource(R.drawable.ic_settings), settings)
             }
         }
     }
